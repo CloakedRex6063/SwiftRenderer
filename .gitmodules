@@ -1,6 +1,6 @@
-[submodule "External/VulkanHeaders"]
-	path = External/VulkanHeaders
-	url = https://github.com/KhronosGroup/Vulkan-Headers
 [submodule "External/GLM"]
 	path = External/GLM
 	url = https://github.com/g-truc/glm
+[submodule "External/VMA"]
+	path = External/VMA
+	url = https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator
