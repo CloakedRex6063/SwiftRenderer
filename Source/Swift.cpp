@@ -85,7 +85,7 @@ void Swift::Renderer::BeginFrame(const DynamicInfo& dynamicInfo)
         Util::HandleSubOptimalSwapchain(
             mGraphicsQueue.index, mContext, mSwapchain, Util::ToExtent2D(dynamicInfo.extent));
         device.destroySemaphore(renderSemaphore);
-        Init::CreateSemaphore(mContext.device);
+        renderSemaphore = Init::CreateSemaphore(mContext.device);
         return;
     }
     result = device.resetFences(renderFence);
