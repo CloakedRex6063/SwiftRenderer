@@ -1,12 +1,10 @@
 #include "Vulkan/VulkanInit.hpp"
-
-#include <complex.h>
-
-#include <Vulkan/VulkanStructs.hpp>
-#include <queue>
-
+#include "Vulkan/VulkanConstants.hpp"
+#include "Vulkan/VulkanStructs.hpp"
 #include "Vulkan/VulkanUtil.hpp"
 #include "vulkan/vulkan_win32.h"
+
+#include <complex.h>
 
 namespace
 {
@@ -26,7 +24,8 @@ namespace
                 graphicsFamily = static_cast<u32>(index);
                 break;
             }
-            // TODO: Check based on dedicated queue support. Async uploads requires a separate queue.
+            // TODO: Check based on dedicated queue support. Async uploads requires a separate
+            // queue.
         }
 
         return graphicsFamily.has_value();
@@ -95,7 +94,7 @@ namespace
         const auto [result, capabilities] = gpu.getSurfaceCapabilitiesKHR(surface);
         return capabilities.currentTransform;
     }
-}  // namespace
+} // namespace
 
 namespace Swift::Vulkan
 {
@@ -160,16 +159,19 @@ namespace Swift::Vulkan
         const vk::Instance& instance,
         const vk::SurfaceKHR& surface)
     {
-        std::map<vk::PhysicalDevice, u32> scores;
+        std::map<u32, vk::PhysicalDevice> scores;
 
         auto [result, devices] = instance.enumeratePhysicalDevices();
         VK_ASSERT(result, "Failed to enumerate physical devices");
         for (auto device : devices)
         {
-            vk::StructureChain<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceDescriptorIndexingFeatures>
+            vk::StructureChain<
+                vk::PhysicalDeviceFeatures2,
+                vk::PhysicalDeviceDescriptorIndexingFeatures>
                 structureChain;
 
-            auto& indexingFeatures = structureChain.get<vk::PhysicalDeviceDescriptorIndexingFeatures>();
+            auto& indexingFeatures =
+                structureChain.get<vk::PhysicalDeviceDescriptorIndexingFeatures>();
             auto& deviceFeatures = structureChain.get<vk::PhysicalDeviceFeatures2>();
 
             vk::PhysicalDeviceProperties deviceProperties;
@@ -188,7 +190,9 @@ namespace Swift::Vulkan
                 continue;
             }
 
-            std::array extensions{VK_KHR_SWAPCHAIN_EXTENSION_NAME, VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME};
+            std::array extensions{
+                VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+                VK_EXT_SHADER_OBJECT_EXTENSION_NAME};
 
             bool extensionSupported = true;
             auto [result, extensionProps] = device.enumerateDeviceExtensionProperties();
@@ -211,7 +215,8 @@ namespace Swift::Vulkan
                 continue;
 
             // Check for bindless rendering support.
-            if (!indexingFeatures.descriptorBindingPartiallyBound || !indexingFeatures.runtimeDescriptorArray)
+            if (!indexingFeatures.descriptorBindingPartiallyBound ||
+                !indexingFeatures.runtimeDescriptorArray)
             {
                 continue;
             }
@@ -222,18 +227,20 @@ namespace Swift::Vulkan
                 continue;
             }
 
+            u32 score = 0;
             // Favor discrete GPUs above all else.
             if (deviceProperties.deviceType == vk::PhysicalDeviceType::eDiscreteGpu)
-                scores[device] += 50000;
+                score += 50000;
 
             // Slightly favor integrated GPUs.
             if (deviceProperties.deviceType == vk::PhysicalDeviceType::eIntegratedGpu)
-                scores[device] += 30000;
+                score += 20000;
 
-            scores[device] += deviceProperties.limits.maxImageDimension2D;
+            score += deviceProperties.limits.maxImageDimension2D;
+            scores.emplace(score, device);
         }
         assert(!scores.empty());
-        return scores.rbegin()->first;
+        return scores.rbegin()->second;
     }
 
     vk::Device Init::CreateDevice(
@@ -242,20 +249,41 @@ namespace Swift::Vulkan
     {
         std::vector extensionNames{
             VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-        };
+            VK_EXT_SHADER_OBJECT_EXTENSION_NAME};
+
+        const auto [requireResult, extensions] =
+            physicalDevice.enumerateDeviceExtensionProperties();
+        VK_ASSERT(requireResult, "Failed to enumerate physical device properties");
+        for (const auto& extension : extensionNames)
+        {
+            auto iterator = std::ranges::find_if(
+                extensions,
+                [extension](const vk::ExtensionProperties& supported)
+                {
+                    return std::strcmp(supported.extensionName.data(), extension) == 0;
+                });
+
+            if (iterator == extensions.end())
+            {
+                VK_ASSERT(vk::Result::eErrorExtensionNotPresent, "Failed to find extension");
+            }
+        }
 
         auto structureChain = vk::StructureChain<
             vk::DeviceCreateInfo,
             vk::PhysicalDeviceFeatures2,
             vk::PhysicalDeviceVulkan12Features,
-            vk::PhysicalDeviceVulkan13Features>();
+            vk::PhysicalDeviceVulkan13Features,
+            vk::PhysicalDeviceShaderObjectFeaturesEXT>();
 
         auto& features12 = structureChain.get<vk::PhysicalDeviceVulkan12Features>();
         features12.setBufferDeviceAddress(true)
             .setDescriptorBindingPartiallyBound(true)
             .setDescriptorBindingSampledImageUpdateAfterBind(true)
             .setDescriptorBindingStorageBufferUpdateAfterBind(true)
-            .setDescriptorBindingUniformBufferUpdateAfterBind(true);
+            .setDescriptorBindingStorageImageUpdateAfterBind(true)
+            .setDescriptorBindingUniformBufferUpdateAfterBind(true)
+            .setRuntimeDescriptorArray(true);
 
         auto& features13 = structureChain.get<vk::PhysicalDeviceVulkan13Features>();
         features13.setDynamicRendering(true).setSynchronization2(true).setMaintenance4(true);
@@ -270,17 +298,24 @@ namespace Swift::Vulkan
         auto& deviceFeatures2 = structureChain.get<vk::PhysicalDeviceFeatures2>();
         deviceFeatures2.setFeatures(deviceFeatures);
 
+        auto& shaderObjectFeatures =
+            structureChain.get<vk::PhysicalDeviceShaderObjectFeaturesEXT>();
+        shaderObjectFeatures.setShaderObject(true);
+
         std::vector<vk::DeviceQueueCreateInfo> queueCreateInfos;
         for (const auto family : Util::GetQueueFamilyIndices(physicalDevice, surface))
         {
             auto priority = 1.0f;
-            auto queueCreateInfo =
-                vk::DeviceQueueCreateInfo().setQueueCount(1).setQueueFamilyIndex(family).setQueuePriorities(priority);
+            auto queueCreateInfo = vk::DeviceQueueCreateInfo()
+                                       .setQueueCount(1)
+                                       .setQueueFamilyIndex(family)
+                                       .setQueuePriorities(priority);
             queueCreateInfos.emplace_back(queueCreateInfo);
         }
 
         auto& deviceCreateInfo = structureChain.get<vk::DeviceCreateInfo>();
-        deviceCreateInfo.setPEnabledExtensionNames(extensionNames).setQueueCreateInfos(queueCreateInfos);
+        deviceCreateInfo.setPEnabledExtensionNames(extensionNames)
+            .setQueueCreateInfos(queueCreateInfos);
         auto [result, device] = physicalDevice.createDevice(deviceCreateInfo);
         VK_ASSERT(result, "Failed to create device");
         return device;
@@ -290,6 +325,7 @@ namespace Swift::Vulkan
     {
         VmaAllocator allocator;
         const VmaAllocatorCreateInfo createInfo{
+            .flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT,
             .physicalDevice = context.gpu,
             .device = context.device,
             .instance = context.instance,
@@ -319,7 +355,8 @@ namespace Swift::Vulkan
                 .setMinImageCount(ChooseSwapchainImageCount(gpu, surface))
                 .setImageExtent(extent)
                 .setImageArrayLayers(1)
-                .setImageUsage(vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eTransferDst)
+                .setImageUsage(
+                    vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eTransferDst)
                 .setImageSharingMode(vk::SharingMode::eExclusive)
                 .setQueueFamilyIndices(queueIndex)
                 .setPreTransform(ChooseSwapchainPreTransform(gpu, surface));
@@ -330,26 +367,75 @@ namespace Swift::Vulkan
     }
 
     vk::Queue Init::GetQueue(
-        const vk::Device device,
-        const u32 queueFamilyIndex)
+        const Context& context,
+        const u32 queueFamilyIndex,
+        const std::string_view debugName)
     {
-        return device.getQueue(queueFamilyIndex, 0);
+        const auto queue = context.device.getQueue(queueFamilyIndex, 0);
+        Util::NameObject(queue, debugName, context);
+        return queue;
     }
 
     vk::ImageView Init::CreateImageView(
         const Context& context,
-        const vk::Image& image,
-        const vk::Format& format,
+        const vk::ImageViewCreateInfo& createInfo,
+        const std::string_view debugName)
+    {
+        auto [result, imageView] = context.device.createImageView(createInfo);
+        VK_ASSERT(result, "Failed to create image view");
+        Util::NameObject(imageView, debugName, context);
+        return imageView;
+    }
+
+    vk::ImageView Init::CreateImageView(
+        const Context& context,
+        const vk::Image image,
+        const vk::Format format,
         const vk::ImageViewType viewType,
         const vk::ImageAspectFlags aspectMask,
         const std::string_view debugName)
     {
         const auto createInfo =
-            vk::ImageViewCreateInfo().setImage(image).setFormat(format).setViewType(viewType).setSubresourceRange(
-                Util::GetImageSubresourceRange(aspectMask));
+            vk::ImageViewCreateInfo()
+                .setImage(image)
+                .setFormat(format)
+                .setViewType(viewType)
+                .setSubresourceRange(Util::GetImageSubresourceRange(aspectMask));
         const auto [result, imageView] = context.device.createImageView(createInfo);
         VK_ASSERT(result, "Failed to create image view");
         Util::NameObject(imageView, debugName, context);
+        return imageView;
+    }
+
+    vk::ImageView Init::CreateColorImageView(
+        const Context& context,
+        const vk::Image image,
+        const vk::Format format,
+        const std::string_view debugName)
+    {
+        const auto imageView = CreateImageView(
+            context,
+            image,
+            format,
+            vk::ImageViewType::e2D,
+            vk::ImageAspectFlagBits::eColor,
+            debugName);
+        return imageView;
+    }
+
+    vk::ImageView Init::CreateDepthImageView(
+        const Context& context,
+        const vk::Image image,
+        const std::string_view debugName)
+    {
+
+        const auto imageView = CreateImageView(
+            context,
+            image,
+            vk::Format::eD32Sfloat,
+            vk::ImageViewType::e2D,
+            vk::ImageAspectFlagBits::eDepth,
+            debugName);
         return imageView;
     }
 
@@ -382,8 +468,26 @@ namespace Swift::Vulkan
             .usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE,
             .requiredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
         };
-        const auto result = vmaCreateImage(allocator, &cCreateInfo, &allocCreateInfo, &image, &allocation, nullptr);
+        const auto result =
+            vmaCreateImage(allocator, &cCreateInfo, &allocCreateInfo, &image, &allocation, nullptr);
         assert(result == VK_SUCCESS);
+        return {image, allocation};
+    }
+
+    std::tuple<
+        vk::Image,
+        VmaAllocation>
+    Init::CreateImage(
+        const Context& context,
+        const VkImageCreateInfo& info)
+    {
+        constexpr VmaAllocationCreateInfo allocCreateInfo{
+            .usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE,
+            .requiredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+        };
+        VkImage image;
+        VmaAllocation allocation;
+        vmaCreateImage(context.allocator, &info, &allocCreateInfo, &image, &allocation, nullptr);
         return {image, allocation};
     }
 
@@ -410,45 +514,211 @@ namespace Swift::Vulkan
         return swapchainImages;
     }
 
-    vk::Fence Init::CreateFence(const vk::Device device)
+    std::tuple<
+        vk::Buffer,
+        VmaAllocation,
+        VmaAllocationInfo>
+    Init::CreateBuffer(
+        const Context& context,
+        u32 queueFamilyIndex,
+        const vk::DeviceSize size,
+        const vk::BufferUsageFlags bufferUsageFlags)
     {
-        auto [result, fence] = device.createFence(vk::FenceCreateInfo().setFlags(vk::FenceCreateFlagBits::eSignaled));
+        const auto props = context.gpu.getProperties();
+
+        auto alignedSize = size;
+        if (bufferUsageFlags & vk::BufferUsageFlagBits::eUniformBuffer)
+        {
+            const auto uboAlignment = props.limits.minUniformBufferOffsetAlignment;
+            alignedSize = Util::PadAlignment(size, uboAlignment);
+        }
+
+        if (bufferUsageFlags & vk::BufferUsageFlagBits::eStorageBuffer)
+        {
+            const auto storageAlignment = props.limits.minStorageBufferOffsetAlignment;
+            alignedSize = Util::PadAlignment(size, storageAlignment);
+        }
+
+        const auto createInfo = vk::BufferCreateInfo()
+                                    .setQueueFamilyIndices(queueFamilyIndex)
+                                    .setSharingMode(vk::SharingMode::eExclusive)
+                                    .setSize(alignedSize)
+                                    .setUsage(bufferUsageFlags);
+        const auto cCreateInfo = static_cast<VkBufferCreateInfo>(createInfo);
+        constexpr VmaAllocationCreateInfo allocCreateInfo{.usage = VMA_MEMORY_USAGE_CPU_TO_GPU};
+
+        VkBuffer buffer;
+        VmaAllocation allocation;
+        VmaAllocationInfo info;
+        vmaCreateBuffer(
+            context.allocator,
+            &cCreateInfo,
+            &allocCreateInfo,
+            &buffer,
+            &allocation,
+            &info);
+        return {buffer, allocation, info};
+    }
+
+    vk::Fence Init::CreateFence(
+        const Context& context,
+        const vk::FenceCreateFlags flags,
+        const std::string_view debugName)
+    {
+        auto [result, fence] = context.device.createFence(vk::FenceCreateInfo().setFlags(flags));
+        VK_ASSERT(result, "Failed to create fence");
+        Util::NameObject(fence, debugName, context);
         return fence;
     }
 
-    vk::Semaphore Init::CreateSemaphore(const vk::Device device)
+    vk::Semaphore Init::CreateSemaphore(
+        const Context& context,
+        const std::string_view debugName)
     {
-        auto [result, semaphore] = device.createSemaphore(vk::SemaphoreCreateInfo());
+        auto [result, semaphore] = context.device.createSemaphore(vk::SemaphoreCreateInfo());
+        VK_ASSERT(result, "Failed to create semaphore");
+        Util::NameObject(semaphore, debugName, context);
         return semaphore;
     }
 
     vk::CommandBuffer Init::CreateCommandBuffer(
-        const vk::Device device,
-        const vk::CommandPool commandPool)
+        const Context& context,
+        const vk::CommandPool commandPool,
+        const std::string_view debugName)
     {
         const auto allocateInfo = vk::CommandBufferAllocateInfo()
                                       .setCommandBufferCount(1)
                                       .setCommandPool(commandPool)
                                       .setLevel(vk::CommandBufferLevel::ePrimary);
-        auto [result, commandBuffers] = device.allocateCommandBuffers(allocateInfo);
+        auto [result, commandBuffers] = context.device.allocateCommandBuffers(allocateInfo);
+        VK_ASSERT(result, "Failed to allocate command buffers");
+        Util::NameObject(commandBuffers.front(), debugName, context);
         return commandBuffers.front();
     }
 
     vk::CommandPool Init::CreateCommandPool(
-        const vk::Device device,
-        const u32 queueIndex)
+        const Context& context,
+        const u32 queueIndex,
+        const std::string_view debugName)
     {
         const auto createInfo = vk::CommandPoolCreateInfo()
                                     .setQueueFamilyIndex(queueIndex)
                                     .setFlags(vk::CommandPoolCreateFlagBits::eResetCommandBuffer);
-        auto [result, commandPool] = device.createCommandPool(createInfo);
+        auto [result, commandPool] = context.device.createCommandPool(createInfo);
+        VK_ASSERT(result, "Failed to create command pool");
+        Util::NameObject(commandPool, debugName, context);
         return commandPool;
     }
     vk::DispatchLoaderDynamic Init::CreateDynamicLoader(
         const vk::Instance instance,
         const vk::Device device)
     {
-        return vk::DispatchLoaderDynamic(instance, vkGetInstanceProcAddr, device, vkGetDeviceProcAddr);
+        return vk::DispatchLoaderDynamic(
+            instance,
+            vkGetInstanceProcAddr,
+            device,
+            vkGetDeviceProcAddr);
     }
 
-}  // namespace Swift::Vulkan
+    vk::DescriptorSetLayout Init::CreateDescriptorSetLayout(const vk::Device device)
+    {
+        std::array descriptorBindings = {
+            vk::DescriptorSetLayoutBinding()
+                .setBinding(Constants::SamplerBinding)
+                .setDescriptorCount(Constants::MaxSamplerDescriptors)
+                .setDescriptorType(vk::DescriptorType::eCombinedImageSampler)
+                .setStageFlags(vk::ShaderStageFlagBits::eAll),
+            vk::DescriptorSetLayoutBinding()
+                .setBinding(Constants::UniformBinding)
+                .setDescriptorCount(Constants::MaxUniformDescriptors)
+                .setDescriptorType(vk::DescriptorType::eUniformBuffer)
+                .setStageFlags(vk::ShaderStageFlagBits::eAll),
+            vk::DescriptorSetLayoutBinding()
+                .setBinding(Constants::StorageBinding)
+                .setDescriptorCount(Constants::MaxStorageDescriptors)
+                .setDescriptorType(vk::DescriptorType::eStorageBuffer)
+                .setStageFlags(vk::ShaderStageFlagBits::eAll),
+            vk::DescriptorSetLayoutBinding()
+                .setBinding(Constants::ImageBinding)
+                .setDescriptorCount(Constants::MaxImageDescriptors)
+                .setDescriptorType(vk::DescriptorType::eStorageImage)
+                .setStageFlags(vk::ShaderStageFlagBits::eAll)};
+
+        constexpr auto flags = vk::DescriptorBindingFlagBits::ePartiallyBound |
+                               vk::DescriptorBindingFlagBits::eUpdateAfterBind;
+        std::vector bindingsFlags(descriptorBindings.size(), flags);
+        const auto bindingInfo =
+            vk::DescriptorSetLayoutBindingFlagsCreateInfo().setBindingFlags(bindingsFlags);
+
+        const auto createInfo =
+            vk::DescriptorSetLayoutCreateInfo()
+                .setPNext(&bindingInfo)
+                .setBindings(descriptorBindings)
+                .setFlags(vk::DescriptorSetLayoutCreateFlagBits::eUpdateAfterBindPool);
+        auto [result, layout] = device.createDescriptorSetLayout(createInfo);
+        VK_ASSERT(result, "Failed to create descriptor set layout");
+        return layout;
+    }
+
+    vk::DescriptorPool Init::CreateDescriptorPool(const vk::Device device)
+    {
+        constexpr std::array poolSizes{
+            vk::DescriptorPoolSize()
+                .setDescriptorCount(Constants::MaxUniformDescriptors)
+                .setType(vk::DescriptorType::eUniformBuffer),
+            vk::DescriptorPoolSize()
+                .setDescriptorCount(Constants::MaxStorageDescriptors)
+                .setType(vk::DescriptorType::eStorageBuffer),
+            vk::DescriptorPoolSize()
+                .setDescriptorCount(Constants::MaxSamplerDescriptors)
+                .setType(vk::DescriptorType::eSampler),
+            vk::DescriptorPoolSize()
+                .setDescriptorCount(Constants::MaxImageDescriptors)
+                .setType(vk::DescriptorType::eStorageImage)};
+        const auto createInfo =
+            vk::DescriptorPoolCreateInfo().setMaxSets(1).setPoolSizes(poolSizes).setFlags(
+                vk::DescriptorPoolCreateFlagBits::eUpdateAfterBind);
+        auto [result, descriptorPool] = device.createDescriptorPool(createInfo);
+        VK_ASSERT(result, "Failed to create descriptor pool");
+        return descriptorPool;
+    }
+
+    vk::DescriptorSet Init::CreateDescriptorSet(
+        const vk::Device device,
+        const vk::DescriptorPool descriptorPool,
+        vk::DescriptorSetLayout descriptorSetLayout)
+    {
+        const auto createInfo = vk::DescriptorSetAllocateInfo()
+                                    .setDescriptorPool(descriptorPool)
+                                    .setDescriptorSetCount(1)
+                                    .setSetLayouts(descriptorSetLayout);
+        auto [result, descriptorSet] = device.allocateDescriptorSets(createInfo);
+        VK_ASSERT(result, "Failed to allocate descriptor set");
+        return descriptorSet.front();
+    }
+
+    vk::ShaderCreateInfoEXT Init::CreateShader(
+        const std::span<char> shaderCode,
+        const vk::ShaderStageFlagBits shaderStage,
+        const vk::DescriptorSetLayout& descriptorSetLayout,
+        const vk::PushConstantRange& pushConstantRange,
+        const vk::ShaderCreateFlagsEXT shaderFlags,
+        const vk::ShaderStageFlags nextStage)
+    {
+        auto shaderCreateInfo = vk::ShaderCreateInfoEXT()
+                                    .setStage(shaderStage)
+                                    .setFlags(shaderFlags)
+                                    .setNextStage(nextStage)
+                                    .setCodeType(vk::ShaderCodeTypeEXT::eSpirv)
+                                    .setPCode(shaderCode.data())
+                                    .setCodeSize(shaderCode.size())
+                                    .setPName("main")
+                                    .setSetLayouts(descriptorSetLayout);
+        if (pushConstantRange.size > 0)
+        {
+            shaderCreateInfo.setPushConstantRanges(pushConstantRange);
+        }
+        return shaderCreateInfo;
+    }
+
+} // namespace Swift::Vulkan

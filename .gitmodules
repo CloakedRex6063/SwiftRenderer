@@ -4,3 +4,6 @@
 [submodule "External/VMA"]
 	path = External/VMA
 	url = https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator
+[submodule "External/DDS"]
+	path = External/DDS
+	url = https://github.com/spnda/dds_image

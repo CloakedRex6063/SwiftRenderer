@@ -26,17 +26,31 @@ namespace Swift::Vulkan::Init
         u32 queueIndex);
 
     vk::Queue GetQueue(
-        vk::Device device,
-        u32 queueFamilyIndex);
+        const Context& context,
+        u32 queueFamilyIndex,
+        std::string_view debugName);
 
     vk::ImageView CreateImageView(
         const Context& context,
-        const vk::Image& image,
-        const vk::Format& format,
+        const vk::ImageViewCreateInfo& createInfo,
+        std::string_view debugName = "Image View");
+
+    vk::ImageView CreateImageView(
+        const Context& context,
+        vk::Image image,
+        vk::Format format,
         vk::ImageViewType viewType,
         vk::ImageAspectFlags aspectMask,
         std::string_view debugName = "Image View");
-
+    vk::ImageView CreateColorImageView(
+        const Context& context,
+        vk::Image image,
+        vk::Format format,
+        std::string_view debugName);
+    vk::ImageView CreateDepthImageView(
+        const Context& context,
+        vk::Image image,
+        std::string_view debugName);
     std::tuple<
         vk::Image,
         VmaAllocation>
@@ -47,19 +61,58 @@ namespace Swift::Vulkan::Init
         vk::Format format,
         vk::ImageUsageFlags usage,
         u32 mipLevels = 1);
+    std::tuple<
+        vk::Image,
+        VmaAllocation>
+    CreateImage(
+        const Context& context,
+        const VkImageCreateInfo& info);
+
     std::vector<Image> CreateSwapchainImages(
         const Context& context,
         const Swapchain& swapchain);
 
-    vk::Fence CreateFence(vk::Device device);
-    vk::Semaphore CreateSemaphore(vk::Device device);
+    std::tuple<
+        vk::Buffer,
+        VmaAllocation,
+        VmaAllocationInfo>
+    CreateBuffer(
+        const Context& context,
+        u32 queueFamilyIndex,
+        vk::DeviceSize size,
+        vk::BufferUsageFlags bufferUsageFlags);
+
+    vk::Fence CreateFence(
+        const Context& context,
+        vk::FenceCreateFlags flags,
+        std::string_view debugName);
+    vk::Semaphore CreateSemaphore(
+        const Context& context,
+        std::string_view debugName);
     vk::CommandBuffer CreateCommandBuffer(
-        vk::Device device,
-        vk::CommandPool commandPool);
+        const Context& context,
+        vk::CommandPool commandPool,
+        std::string_view debugName);
     vk::CommandPool CreateCommandPool(
-        vk::Device device,
-        u32 queueIndex);
+        const Context& context,
+        u32 queueIndex,
+        std::string_view debugName);
     vk::DispatchLoaderDynamic CreateDynamicLoader(
         vk::Instance instance,
         vk::Device device);
-}  // namespace Swift::Vulkan::Init
+
+    vk::DescriptorSetLayout CreateDescriptorSetLayout(vk::Device device);
+    vk::DescriptorPool CreateDescriptorPool(vk::Device device);
+    vk::DescriptorSet CreateDescriptorSet(
+        vk::Device device,
+        vk::DescriptorPool descriptorPool,
+        vk::DescriptorSetLayout descriptorSetLayout);
+
+    vk::ShaderCreateInfoEXT CreateShader(
+        std::span<char> shaderCode,
+        vk::ShaderStageFlagBits shaderStage,
+        const vk::DescriptorSetLayout& descriptorSetLayout,
+        const vk::PushConstantRange& pushConstantRange,
+        vk::ShaderCreateFlagsEXT shaderFlags = {},
+        vk::ShaderStageFlags nextStage = {});
+} // namespace Swift::Vulkan::Init

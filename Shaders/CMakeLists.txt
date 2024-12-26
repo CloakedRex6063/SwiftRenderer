@@ -2,7 +2,6 @@ file(GLOB_RECURSE GLSL_SOURCE_FILES
         "${CMAKE_CURRENT_SOURCE_DIR}/*.frag"
         "${CMAKE_CURRENT_SOURCE_DIR}/*.vert"
         "${CMAKE_CURRENT_SOURCE_DIR}/*.comp"
-        "${CMAKE_CURRENT_SOURCE_DIR}/*.glsl"
         "${CMAKE_CURRENT_SOURCE_DIR}/*.mesh")
 
 find_program(GLSL_VALIDATOR glslc REQUIRED)

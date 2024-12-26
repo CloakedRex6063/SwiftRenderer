@@ -1,9 +1,13 @@
-BasedOnStyle: Chromium
+BasedOnStyle: LLVM
 IndentWidth: 4
-ColumnLimit: 120
+ColumnLimit: 100
 AllowAllParametersOfDeclarationOnNextLine: false
 AllowShortFunctionsOnASingleLine: InlineOnly
 AllowShortLambdasOnASingleLine: None
+PackConstructorInitializers: Never
+BreakConstructorInitializers: AfterColon
+BreakFunctionDefinitionParameters: false
+AllowAllArgumentsOnNextLine: false
 BinPackArguments: false
 BinPackParameters: AlwaysOnePerLine
 AlignAfterOpenBracket: AlwaysBreak
@@ -12,6 +16,7 @@ AccessModifierOffset: -4
 AlwaysBreakBeforeMultilineStrings: true
 BreakAfterAttributes: Never
 NamespaceIndentation: All
+PointerAlignment: Left
 BraceWrapping:
   AfterClass: true
   AfterControlStatement: true

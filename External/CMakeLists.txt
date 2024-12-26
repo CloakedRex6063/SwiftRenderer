@@ -4,6 +4,11 @@ target_link_libraries(SwiftRender PUBLIC glm::glm)
 add_subdirectory(VMA)
 target_link_libraries(SwiftRender PUBLIC GPUOpen::VulkanMemoryAllocator)
 
+add_subdirectory(DDS)
+target_compile_definitions(SwiftRender PUBLIC DDS_USE_STD_FILESYSTEM DDS_CPP_17)
+target_link_libraries(SwiftRender PRIVATE dds_image)
+target_include_directories(SwiftRender PUBLIC DDS/include)
+
 find_package(Vulkan REQUIRED)
 if(Vulkan_FOUND)
     message(STATUS "Vulkan SDK is installed")

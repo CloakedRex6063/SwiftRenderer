@@ -10,7 +10,7 @@ FILE(GLOB_RECURSE Sources Source/*.cpp)
 add_library(SwiftRender STATIC)
 target_include_directories(SwiftRender PUBLIC Include)
 target_sources(SwiftRender PUBLIC ${Sources})
-target_precompile_headers(SwiftRender PUBLIC Include/PCH.hpp)
+target_precompile_headers(SwiftRender PUBLIC Include/SwiftPCH.hpp)
 
 if (WIN32)
     target_compile_definitions(SwiftRender PUBLIC SWIFT_WINDOWS)

@@ -1,0 +1,26 @@
+#version 460
+
+#extension GL_EXT_nonuniform_qualifier : require
+
+layout (local_size_x = 32, local_size_y = 32) in;
+
+layout(binding = 0) uniform sampler2D samplers[];
+layout(binding = 3, rgba32f) uniform image2D images[];
+
+layout(push_constant) uniform Constant
+{
+    int imageIndex;
+}
+pushConstant;
+
+void main() 
+{
+    // Get the coordinates for the current invocation
+    ivec2 coords = ivec2(gl_GlobalInvocationID.xy);
+
+    // Sample the input image
+    vec4 sampledColor = texture(samplers[0], vec2(coords) / vec2(textureSize(samplers[0], 0)));
+
+    // Write the sampled color to the output image
+    imageStore(images[pushConstant.imageIndex], coords, sampledColor);
+}

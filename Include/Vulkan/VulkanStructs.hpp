@@ -11,6 +11,8 @@ namespace Swift::Vulkan
         VmaAllocator allocator{};
         vk::DispatchLoaderDynamic dynamicLoader;
 
+        operator vk::Device() const { return device; }
+
         Context& SetInstance(const vk::Instance& instance)
         {
             this->instance = instance;
@@ -56,6 +58,8 @@ namespace Swift::Vulkan
         vk::Queue queue;
         u32 index{};
 
+        operator vk::Queue() const { return queue; }
+
         Queue& SetQueue(const vk::Queue& queue)
         {
             this->queue = queue;
@@ -74,6 +78,9 @@ namespace Swift::Vulkan
         vk::ImageView imageView;
         vk::Format format{};
         VmaAllocation imageAllocation{};
+        vk::ImageLayout currentLayout = vk::ImageLayout::eUndefined;
+
+        operator vk::Image() const { return image; }
 
         Image& SetImage(const vk::Image& image)
         {
@@ -95,14 +102,6 @@ namespace Swift::Vulkan
             this->imageAllocation = imageAllocation;
             return *this;
         }
-        Image& SetImageAndAllocation(
-            std::tuple<
-                vk::Image,
-                VmaAllocation> tuple)
-        {
-            std::tie(image, imageAllocation) = tuple;
-            return *this;
-        };
 
         void Destroy(const Context& context)
         {
@@ -119,15 +118,52 @@ namespace Swift::Vulkan
             }
             context.device.destroyImageView(imageView);
         }
-        void DestroyView(const Context& context) const { context.device.destroyImageView(imageView); }
+        void DestroyView(const Context& context) const
+        {
+            context.device.destroyImageView(imageView);
+        }
+    };
+
+    struct Buffer
+    {
+        vk::Buffer buffer;
+        VmaAllocation allocation{};
+        VmaAllocationInfo allocationInfo{};
+
+        operator vk::Buffer() const { return buffer; }
+
+        Buffer& SetBuffer(const vk::Buffer& buffer)
+        {
+            this->buffer = buffer;
+            return *this;
+        }
+        Buffer& SetAllocation(const VmaAllocation& allocation)
+        {
+            this->allocation = allocation;
+            return *this;
+        }
+        Buffer& SetAllocationInfo(const VmaAllocationInfo& allocationInfo)
+        {
+            this->allocationInfo = allocationInfo;
+            return *this;
+        }
+
+        void Destroy(const Context& context) const
+        {
+            vmaDestroyBuffer(context.allocator, buffer, allocation);
+        }
     };
 
     struct Swapchain
     {
         vk::SwapchainKHR swapchain;
         std::vector<Image> images;
+        u32 imageIndex = 0;
+        vk::Extent2D extent;
         Image renderImage;
         Image depthImage;
+
+        operator vk::SwapchainKHR() const { return swapchain; }
 
         Swapchain& SetSwapchain(const vk::SwapchainKHR& swapchain)
         {
@@ -149,6 +185,16 @@ namespace Swift::Vulkan
             this->depthImage = depthImage;
             return *this;
         }
+        Swapchain& SetIndex(const u32 index)
+        {
+            this->imageIndex = index;
+            return *this;
+        }
+        Swapchain& SetExtent(const vk::Extent2D& extent)
+        {
+            this->extent = extent;
+            return *this;
+        }
 
         void Destroy(const Context& context)
         {
@@ -162,12 +208,84 @@ namespace Swift::Vulkan
         }
     };
 
+    struct Command
+    {
+        vk::CommandPool commandPool;
+        vk::CommandBuffer commandBuffer;
+
+        operator vk::CommandBuffer() const { return commandBuffer; }
+
+        void Destroy(const Context& context) const { context.device.destroy(commandPool); }
+    };
+
     struct FrameData
     {
         vk::Semaphore renderSemaphore;
         vk::Semaphore presentSemaphore;
         vk::Fence renderFence;
-        vk::CommandBuffer commandBuffer;
-        vk::CommandPool commandPool;
+        Command renderCommand;
+
+        void Destroy(const Context& context) const
+        {
+            context.device.destroy(renderFence);
+            context.device.destroy(renderSemaphore);
+            context.device.destroy(presentSemaphore);
+            renderCommand.Destroy(context);
+        }
     };
-}  // namespace Swift::Vulkan
+
+    struct BindlessDescriptor
+    {
+        vk::DescriptorSetLayout setLayout;
+        vk::DescriptorSet set;
+        vk::DescriptorPool pool;
+
+        BindlessDescriptor&
+        SetDescriptorSetLayout(const vk::DescriptorSetLayout& descriptorSetLayout)
+        {
+            this->setLayout = descriptorSetLayout;
+            return *this;
+        }
+        BindlessDescriptor& SetDescriptorPool(const vk::DescriptorPool& descriptorPool)
+        {
+            this->pool = descriptorPool;
+            return *this;
+        }
+        BindlessDescriptor& SetDescriptorSet(const vk::DescriptorSet& descriptorSet)
+        {
+            this->set = descriptorSet;
+            return *this;
+        }
+
+        void Destroy(const Context& context) const
+        {
+            context.device.destroyDescriptorSetLayout(setLayout);
+            context.device.destroyDescriptorPool(pool);
+        }
+    };
+
+    struct Shader
+    {
+        std::vector<vk::ShaderEXT> shaders;
+        std::vector<vk::ShaderStageFlagBits> stage;
+        vk::PipelineLayout pipelineLayout;
+
+        Shader& SetShaders(const std::vector<vk::ShaderEXT>& shaders)
+        {
+            this->shaders = shaders;
+            return *this;
+        }
+
+        Shader& SetPipelineLayout(const vk::PipelineLayout& pipelineLayout)
+        {
+            this->pipelineLayout = pipelineLayout;
+            return *this;
+        }
+
+        Shader& SetStageFlags(const std::vector<vk::ShaderStageFlagBits>& stage)
+        {
+            this->stage = stage;
+            return *this;
+        }
+    };
+} // namespace Swift::Vulkan
