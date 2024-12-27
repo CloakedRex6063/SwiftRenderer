@@ -223,13 +223,27 @@ namespace Swift::Vulkan
 
     void Util::ClearColorImage(
         const vk::CommandBuffer& commandBuffer,
-        const Image& image)
+        const Image& image,
+        const vk::ClearColorValue& clearColor)
     {
         commandBuffer.clearColorImage(
             image,
             image.currentLayout,
-            vk::ClearColorValue({0, 0, 0, 0}),
+            vk::ClearColorValue(clearColor),
             GetImageSubresourceRange(vk::ImageAspectFlagBits::eColor));
+    }
+    
+    void* Util::MapBuffer(const Context& context, const Buffer& buffer)
+    {
+        void* mapped;
+        const auto result = vmaMapMemory(context.allocator, buffer.allocation, &mapped);
+        assert(result == VK_SUCCESS && "Failed to map buffer");
+        return mapped;
+    }
+    
+    void Util::UnmapBuffer(const Context& context, const Buffer& buffer)
+    {
+        vmaUnmapMemory(context.allocator, buffer.allocation);
     }
 
     Buffer Util::UploadToImage(

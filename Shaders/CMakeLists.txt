@@ -3,7 +3,6 @@ file(GLOB_RECURSE GLSL_SOURCE_FILES
         "${CMAKE_CURRENT_SOURCE_DIR}/*.vert"
         "${CMAKE_CURRENT_SOURCE_DIR}/*.comp"
         "${CMAKE_CURRENT_SOURCE_DIR}/*.mesh")
-
 find_program(GLSL_VALIDATOR glslc REQUIRED)
 message(STATUS "Gathering shaders")
 foreach(GLSL ${GLSL_SOURCE_FILES})

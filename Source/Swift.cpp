@@ -179,23 +179,6 @@ void Renderer::BeginFrame(const DynamicInfo& dynamicInfo)
         Util::To2D(dynamicInfo.extent));
     Util::ResetFence(gContext, renderFence);
     Util::BeginOneTimeCommand(commandBuffer);
-
-    const auto generalBarrier = Util::ImageBarrier(
-        vk::ImageLayout::eUndefined,
-        vk::ImageLayout::eGeneral,
-        Render::GetSwapchainImage(gSwapchain),
-        vk::ImageAspectFlagBits::eColor);
-    Util::PipelineBarrier(commandBuffer, generalBarrier);
-
-    const auto& swapchainImage = Render::GetSwapchainImage(gSwapchain);
-    Util::ClearColorImage(commandBuffer, swapchainImage);
-
-    const auto colorBarrier = Util::ImageBarrier(
-        vk::ImageLayout::eGeneral,
-        vk::ImageLayout::eColorAttachmentOptimal,
-        Render::GetSwapchainImage(gSwapchain),
-        vk::ImageAspectFlagBits::eColor);
-    Util::PipelineBarrier(commandBuffer, colorBarrier);
 }
 
 void Renderer::EndFrame(const DynamicInfo& dynamicInfo)
@@ -494,6 +477,7 @@ ImageObject Renderer::CreateImageFromFile(
         Util::EndCommand(gTransferCommand);
         Util::SubmitQueueHost(gTransferQueue, gTransferCommand, gTransferFence);
         Util::WaitFence(gContext, gTransferFence);
+        Util::ResetFence(gContext, gTransferFence);
         buffer.Destroy(gContext);
     }
     const auto arrayElement = static_cast<u32>(gSamplerImages.size() - 1);
@@ -559,19 +543,40 @@ void Renderer::DestroyBuffer(BufferObject bufferObject)
     realBuffer.Destroy(gContext);
 }
 
+void* Renderer::MapBuffer(BufferObject bufferObject)
+{
+    const auto& realBuffer = gBuffers.at(bufferObject.index);
+    return Util::MapBuffer(gContext, realBuffer);
+}
+
+void Renderer::UnmapBuffer(BufferObject bufferObject)
+{
+    const auto& realBuffer = gBuffers.at(bufferObject.index);
+    Util::UnmapBuffer(gContext, realBuffer);
+}
+
 void Renderer::UploadToBuffer(
     const BufferObject& buffer,
     const void* data,
-    VkDeviceSize offset,
-    VkDeviceSize size)
+    const u64 offset,
+    const u64 size)
 {
     const auto& realBuffer = gBuffers.at(buffer.index);
     Util::UploadToBuffer(gContext, data, realBuffer, offset, size);
 }
 
+void Renderer::UploadToMapped(
+    void* mapped,
+    const void* data,
+    const u64 offset,
+    const u64 size)
+{
+    Util::UploadToMapped(data, mapped, offset, size);
+}
+
 u64 Renderer::GetBufferAddress(const BufferObject& buffer)
 {
-    auto& realBuffer = gBuffers.at(buffer.index);
+    const auto& realBuffer = gBuffers.at(buffer.index);
     const auto addressInfo = vk::BufferDeviceAddressInfo().setBuffer(realBuffer.buffer);
     return gContext.device.getBufferAddress(addressInfo);
 }
@@ -584,9 +589,9 @@ void Renderer::BindIndexBuffer(const BufferObject& bufferObject)
 }
 
 void Renderer::CopyImage(
-    ImageObject srcImageObject,
-    ImageObject dstImageObject,
-    glm::uvec2 extent)
+    const ImageObject srcImageObject,
+    const ImageObject dstImageObject,
+    const glm::uvec2 extent)
 {
     const auto& commandBuffer = Render::GetCommandBuffer(gFrameData, gCurrentFrame);
     constexpr auto srcLayout = vk::ImageLayout::eTransferSrcOptimal;

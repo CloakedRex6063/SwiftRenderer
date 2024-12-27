@@ -46,11 +46,20 @@ namespace Swift::Renderer
         BufferType bufferType,
         u32 size);
     void DestroyBuffer(BufferObject bufferObject);
+
+    void* MapBuffer(BufferObject bufferObject);
+    void UnmapBuffer(BufferObject bufferObject);
     void UploadToBuffer(
         const BufferObject& buffer,
         const void* data,
-        VkDeviceSize offset,
-        VkDeviceSize size);
+        u64 offset,
+        u64 size);
+    void UploadToMapped(
+        void* mapped,
+        const void* data,
+        u64 offset,
+        u64 size);
+    
     u64 GetBufferAddress(const BufferObject& buffer);
     void BindIndexBuffer(const BufferObject& bufferObject);
 

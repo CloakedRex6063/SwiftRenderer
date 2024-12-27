@@ -78,6 +78,15 @@ namespace Swift::Vulkan::Util
         assert(result == VK_SUCCESS && "Failed to copy memory to buffer");
     }
 
+    inline void UploadToMapped(
+        const void* data,
+        void* mapped,
+        const VkDeviceSize offset,
+        const VkDeviceSize size)
+    {
+        std::memcpy(static_cast<char*>(mapped) + offset, data, size);
+    }
+
     Buffer UploadToImage(
         const Context& context,
         vk::CommandBuffer commandBuffer,
@@ -159,8 +168,9 @@ namespace Swift::Vulkan::Util
         return range;
     }
 
-    inline vk::ImageSubresourceLayers
-    GetImageSubresourceLayers(const vk::ImageAspectFlags aspectMask, const u32 mipLevel = 0)
+    inline vk::ImageSubresourceLayers GetImageSubresourceLayers(
+        const vk::ImageAspectFlags aspectMask,
+        const u32 mipLevel = 0)
     {
         const auto range = vk::ImageSubresourceLayers()
                                .setAspectMask(aspectMask)
@@ -176,7 +186,7 @@ namespace Swift::Vulkan::Util
         Image& image,
         vk::ImageAspectFlags flags,
         int mipCount = 1);
-    
+
     void PipelineBarrier(
         vk::CommandBuffer commandBuffer,
         vk::ArrayProxy<vk::ImageMemoryBarrier2> imageBarriers);
@@ -192,7 +202,8 @@ namespace Swift::Vulkan::Util
 
     void ClearColorImage(
         const vk::CommandBuffer& commandBuffer,
-        const Image& image);
+        const Image& image,
+        const vk::ClearColorValue& clearColor);
 
     inline u32 PadAlignment(
         const u32 originalSize,
@@ -200,4 +211,11 @@ namespace Swift::Vulkan::Util
     {
         return (originalSize + alignment - 1) & ~(alignment - 1);
     }
+
+    void* MapBuffer(
+        const Context& context,
+        const Buffer& buffer);
+    void UnmapBuffer(
+        const Context& context,
+        const Buffer& buffer);
 }; // namespace Swift::Vulkan::Util
