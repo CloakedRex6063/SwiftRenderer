@@ -22,7 +22,7 @@ add_subdirectory(External)
 add_subdirectory(Shaders)
 add_dependencies(SwiftRender CompileShaders)
 
-option(SwiftWithExample "Build the example project" ON)
+option(SwiftWithExample "Build the example project" OFF)
 
 if (SwiftWithExample)
     add_subdirectory(Example)
