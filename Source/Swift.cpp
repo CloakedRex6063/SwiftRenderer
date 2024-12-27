@@ -588,6 +588,27 @@ void Swift::BindIndexBuffer(const BufferObject& bufferObject)
     commandBuffer.bindIndexBuffer(realBuffer, 0, vk::IndexType::eUint32);
 }
 
+void Swift::ClearSwapchainImage(const glm::vec4 color)
+{
+    const auto& commandBuffer = Render::GetCommandBuffer(gFrameData, gCurrentFrame);
+    const auto generalBarrier = Util::ImageBarrier(
+    vk::ImageLayout::eUndefined,
+    vk::ImageLayout::eGeneral,
+    gSwapchain.renderImage,
+    vk::ImageAspectFlagBits::eColor);
+    Util::PipelineBarrier(commandBuffer, generalBarrier);
+    
+    const auto clearColor = vk::ClearColorValue(color.x, color.y, color.z, color.w);
+    Util::ClearColorImage(commandBuffer, gSwapchain.renderImage, clearColor);
+
+    const auto colorBarrier = Util::ImageBarrier(
+        vk::ImageLayout::eGeneral,
+        vk::ImageLayout::eColorAttachmentOptimal,
+        gSwapchain.renderImage,
+        vk::ImageAspectFlagBits::eColor);
+    Util::PipelineBarrier(commandBuffer, colorBarrier);
+}
+
 void Swift::CopyImage(
     const ImageObject srcImageObject,
     const ImageObject dstImageObject,

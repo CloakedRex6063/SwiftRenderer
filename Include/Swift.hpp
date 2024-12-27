@@ -61,6 +61,7 @@ namespace Swift
     u64 GetBufferAddress(const BufferObject& buffer);
     void BindIndexBuffer(const BufferObject& bufferObject);
 
+    void ClearSwapchainImage(glm::vec4 color);
     void CopyImage(
         ImageObject srcImageObject,
         ImageObject dstImageObject,
