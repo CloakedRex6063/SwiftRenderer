@@ -7,7 +7,6 @@ class Parser
 public:
     void Init();
     std::optional<Model> LoadModelFromFile(std::string_view filename);
-    void Shutdown();
 
     fastgltf::Parser mParser;
 
@@ -16,6 +15,9 @@ private:
         const fastgltf::Asset& asset,
         Model& model);
     static void LoadMeshes(
+        const fastgltf::Asset& asset,
+        Model& model);
+    static void LoadImageURIs(
         const fastgltf::Asset& asset,
         Model& model);
     static void TraverseNode(

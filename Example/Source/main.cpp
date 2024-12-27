@@ -39,23 +39,27 @@ int main()
     Parser parser;
     parser.Init();
     const auto modelOpt =
-        parser.LoadModelFromFile("../../../Example/Models/ToyCar.gltf");
+        parser.LoadModelFromFile("../../../Example/Models/Helmet/DamagedHelmet.gltf");
     models.emplace_back(modelOpt.value());
     
     Swift::Renderer swiftRenderer;
     swiftRenderer.Init(initInfo);
 
-    struct ComputePushConstant
-    {
-        int index;
-    } computePushConstant{};
+    const auto ddsImage = swiftRenderer.CreateImageFromFile(
+    "../../../Example/Models/Helmet/Default_albedo.dds",
+    0,
+    false);
 
-    const auto computeShaderObject = swiftRenderer.CreateComputeShaderObject(
-        "../Shaders/triangle.comp.spv",
-        sizeof(ComputePushConstant));
-    const auto ddsImage = swiftRenderer.CreateImageFromFile("../../../Example/Models/Helmet/Default_albedo.dds");
-    const auto computeImage = swiftRenderer.CreateWriteableImage(initInfo.extent);
-    computePushConstant.index = computeImage.index;
+    // struct ComputePushConstant
+    // {
+    //     int index;
+    // } computePushConstant{};
+    //
+    // const auto computeShaderObject = swiftRenderer.CreateComputeShaderObject(
+    //     "../Shaders/triangle.comp.spv",
+    //     sizeof(ComputePushConstant));
+    // const auto computeImage = swiftRenderer.CreateWriteableImage(initInfo.extent);
+    // computePushConstant.index = computeImage.index;
 
     struct Camera
     {
@@ -65,7 +69,7 @@ int main()
         float padding;
     } camera;
 
-    camera.pos = glm::vec3(0, 0, 0.5f);
+    camera.pos = glm::vec3(0, 0, 5.f);
     camera.view = glm::inverse(glm::translate(glm::mat4(1.0f), camera.pos));
     camera.proj = glm::perspective(glm::radians(60.f), 1280.f / 720.f, 0.1f, 1000.f);
     camera.proj[1][1] *= -1;
@@ -119,11 +123,10 @@ int main()
         const auto dynamicInfo = Swift::DynamicInfo().SetExtent(extent);
         swiftRenderer.BeginFrame(dynamicInfo);
 
-        swiftRenderer.BindShader(computeShaderObject);
-        swiftRenderer.PushConstant(computePushConstant);
-        swiftRenderer.DispatchCompute(std::ceil(extent.x / 32), std::ceil(extent.x / 32), 1);
-
-        swiftRenderer.BlitToSwapchain(computeImage, computeImage.extent);
+        // swiftRenderer.BindShader(computeShaderObject);
+        // swiftRenderer.PushConstant(computePushConstant);
+        // swiftRenderer.DispatchCompute(std::ceil(extent.x / 32), std::ceil(extent.x / 32), 1);
+        // swiftRenderer.BlitToSwapchain(computeImage, computeImage.extent);
 
         swiftRenderer.BeginRendering();
 

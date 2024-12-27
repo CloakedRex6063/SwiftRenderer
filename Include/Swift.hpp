@@ -37,7 +37,10 @@ namespace Swift
             u32 pushConstantSize = 0);
 
         ImageObject CreateWriteableImage(glm::uvec2 size);
-        ImageObject CreateImageFromFile(const std::filesystem::path& filePath);
+        ImageObject CreateImageFromFile(
+            const std::filesystem::path& filePath,
+            int mipLevel,
+            bool loadAllMipMaps);
         void DestroyImage(ImageObject imageObject);
 
         BufferObject CreateBuffer(

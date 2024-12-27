@@ -1,5 +1,4 @@
 #include "Parser.hpp"
-#include "Swift.hpp"
 #include "fastgltf/glm_element_traits.hpp"
 #include "fastgltf/tools.hpp"
 #include "glm/gtc/type_ptr.hpp"
@@ -39,10 +38,6 @@ std::optional<Model> Parser::LoadModelFromFile(const std::string_view filename)
     LoadMaterials(asset, model);
 
     return model;
-}
-
-void Parser::Shutdown()
-{
 }
 
 void Parser::LoadMaterials(
@@ -100,6 +95,18 @@ void Parser::LoadMeshes(
     {
         const auto node = asset.nodes[nodeIndex];
         TraverseNode(node, asset, parent, model);
+    }
+}
+
+void Parser::LoadImageURIs(
+    const fastgltf::Asset& asset,
+    Model& model)
+{
+    for (const auto& [data, name] : asset.images)
+    {
+        assert(std::holds_alternative<fastgltf::sources::URI>(data));
+        auto uri = std::get<fastgltf::sources::URI>(data);
+        model.uris.emplace_back(uri.uri.string());
     }
 }
 

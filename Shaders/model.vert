@@ -11,7 +11,7 @@ layout(push_constant) uniform Constant
     int transformIndex;
 } pushConstant;
 
-layout(location = 0) out mat4 outTransform;
+layout(location = 0) out vec2 outUV;
 
 void main() 
 {
@@ -19,5 +19,5 @@ void main()
     mat4 transform = pushConstant.transformBuffer.transforms[pushConstant.transformIndex];
     CameraBuffer cameraBuffer = pushConstant.cameraBuffer;
     gl_Position = cameraBuffer.proj * cameraBuffer.view * transform * vec4(vertex.position, 1);
-    outTransform = transform;
+    outUV = vec2(vertex.uvX, vertex.uvY);
 }

@@ -11,6 +11,10 @@ namespace Swift::Vulkan::Util
         vk::PhysicalDevice physicalDevice,
         vk::SurfaceKHR surface);
 
+    vk::Extent3D GetMipExtent(
+        vk::Extent3D extent,
+        int mipLevel);
+
     void HandleSubOptimalSwapchain(
         u32 graphicsFamily,
         const Context& context,
@@ -78,7 +82,9 @@ namespace Swift::Vulkan::Util
         const Context& context,
         vk::CommandBuffer commandBuffer,
         u32 queueIndex,
-        std::span<u8> imageData,
+        const std::vector<std::span<u8>>& imageData,
+        int mipLevel,
+        bool loadAllMips,
         vk::Extent3D extent,
         Image& image);
 
@@ -86,7 +92,9 @@ namespace Swift::Vulkan::Util
         vk::CommandBuffer commandBuffer,
         vk::Buffer buffer,
         vk::Extent3D extent,
-        vk::Image);
+        int maxMips,
+        bool loadAllMips,
+        vk::Image image);
 
     void CopyImage(
         vk::CommandBuffer commandBuffer,
@@ -138,16 +146,37 @@ namespace Swift::Vulkan::Util
         VK_ASSERT(result, "Failed to set debug object name");
     }
 
-    vk::ImageSubresourceRange GetImageSubresourceRange(
-        vk::ImageAspectFlags aspectMask,
-        u32 mipCount = 1);
-    vk::ImageSubresourceLayers GetImageSubresourceLayers(vk::ImageAspectFlags aspectMask);
+    inline vk::ImageSubresourceRange GetImageSubresourceRange(
+        const vk::ImageAspectFlags aspectMask,
+        const u32 mipCount = 1)
+    {
+        const auto range = vk::ImageSubresourceRange()
+                               .setAspectMask(aspectMask)
+                               .setBaseArrayLayer(0)
+                               .setBaseMipLevel(0)
+                               .setLayerCount(1)
+                               .setLevelCount(mipCount);
+        return range;
+    }
+
+    inline vk::ImageSubresourceLayers
+    GetImageSubresourceLayers(const vk::ImageAspectFlags aspectMask, const u32 mipLevel = 0)
+    {
+        const auto range = vk::ImageSubresourceLayers()
+                               .setAspectMask(aspectMask)
+                               .setBaseArrayLayer(0)
+                               .setLayerCount(1)
+                               .setMipLevel(mipLevel);
+        return range;
+    }
 
     vk::ImageMemoryBarrier2 ImageBarrier(
         vk::ImageLayout oldLayout,
         vk::ImageLayout newLayout,
         Image& image,
-        vk::ImageAspectFlags flags);
+        vk::ImageAspectFlags flags,
+        int mipCount = 1);
+    
     void PipelineBarrier(
         vk::CommandBuffer commandBuffer,
         vk::ArrayProxy<vk::ImageMemoryBarrier2> imageBarriers);

@@ -1,9 +1,10 @@
 #version 460
-
 #include "common.glsl"
 
-layout (location = 0) out vec4 outFragColor;
-layout(location = 0) in mat4 transform;
+layout(location = 0) in vec2 inUV;
+layout(location = 0) out vec4 outFragColor;
+
+layout(binding = 0) uniform sampler2D samplers[];
 
 layout(push_constant) uniform Constant
 {
@@ -15,9 +16,8 @@ layout(push_constant) uniform Constant
     int materialIndex;
 } pushConstant;
 
-
 void main()
 {
     Material material = pushConstant.materialBuffer.materials[pushConstant.materialIndex];
-    outFragColor = vec4(material.baseColorFactor, 1.0);
+    outFragColor = texture(samplers[0], inUV);
 }

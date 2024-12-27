@@ -91,11 +91,11 @@ namespace Swift
                                                .setAddressModeU(vk::SamplerAddressMode::eRepeat)
                                                .setAddressModeV(vk::SamplerAddressMode::eRepeat)
                                                .setAddressModeW(vk::SamplerAddressMode::eRepeat)
-                                               .setBorderColor(vk::BorderColor::eIntOpaqueBlack)
+                                               .setBorderColor(vk::BorderColor::eIntOpaqueWhite)
                                                .setUnnormalizedCoordinates(false)
                                                .setCompareOp(vk::CompareOp::eAlways)
                                                .setCompareEnable(false)
-                                               .setMipmapMode(vk::SamplerMipmapMode::eLinear);
+                                               .setMipmapMode(vk::SamplerMipmapMode::eLinear).setMinLod(6).setMaxLod(50);
         vk::Result result;
         std::tie(result, mLinearSampler) = mContext.device.createSampler(samplerCreateInfo);
         VK_ASSERT(result, "Failed to create sampler!");
@@ -240,6 +240,13 @@ namespace Swift
         const auto& commandBuffer = Render::GetCommandBuffer(mFrameData, mCurrentFrame);
         const auto& [shaders, stageFlags, pipelineLayout] = mShaders.at(shader.index);
         commandBuffer.bindShadersEXT(stageFlags, shaders, mContext.dynamicLoader);
+        const auto it = std::ranges::find(stageFlags, vk::ShaderStageFlagBits::eCompute);
+        auto pipelineBindPoint = vk::PipelineBindPoint::eCompute;
+        if (it == std::end(stageFlags))
+        {
+            pipelineBindPoint = vk::PipelineBindPoint::eGraphics;
+        }
+        commandBuffer.bindDescriptorSets(pipelineBindPoint, pipelineLayout, 0, mDescriptor.set, {});
 
         mCurrentShader = shader.index;
     }
@@ -296,6 +303,8 @@ namespace Swift
                 .SetStageFlags(stageFlags));
 
         const auto index = static_cast<u32>(mShaders.size() - 1);
+        const auto name = "Graphics Layout " + std::to_string(index);
+        Util::NameObject(pipelineLayout, name, mContext);
         return ShaderObject().SetIndex(index);
     }
 
@@ -373,7 +382,10 @@ namespace Swift
             static_cast<u32>(mWriteableImages.size() - 1));
     }
 
-    ImageObject Renderer::CreateImageFromFile(const std::filesystem::path& filePath)
+    ImageObject Renderer::CreateImageFromFile(
+        const std::filesystem::path& filePath,
+        const int mipLevel,
+        const bool loadAllMipMaps)
     {
         vk::Extent3D extent;
         if (filePath.extension() == ".dds")
@@ -386,13 +398,20 @@ namespace Swift
             auto imageViewCreateInfo = dds::getVulkanImageViewCreateInfo(&ddsImage);
 
             imageCreateInfo.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-            imageCreateInfo.mipLevels = 1;
             imageCreateInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+            if (!loadAllMipMaps)
+            {
+                imageCreateInfo.mipLevels = 1;
+                imageCreateInfo.extent = Util::GetMipExtent(imageCreateInfo.extent, mipLevel);
+            }
 
             auto [vulkanImage, alloc] = Init::CreateImage(mContext, imageCreateInfo);
             Util::NameObject(vulkanImage, "Image", mContext);
             imageViewCreateInfo.image = vulkanImage;
-            imageViewCreateInfo.subresourceRange.levelCount = 1;
+            if (!loadAllMipMaps)
+            {
+                imageViewCreateInfo.subresourceRange.levelCount = 1;
+            }
             const auto imageView = Init::CreateImageView(mContext, imageViewCreateInfo);
 
             auto image = Image()
@@ -404,16 +423,26 @@ namespace Swift
 
             // TODO: Replace with a separate transfer command
             Util::BeginOneTimeCommand(mTransferCommand);
-            extent = vk::Extent3D(ddsImage.width, ddsImage.height, ddsImage.depth);
+            extent = imageCreateInfo.extent;
+            const auto imageBarrier = Util::ImageBarrier(
+                image.currentLayout,
+                vk::ImageLayout::eTransferDstOptimal,
+                image,
+                vk::ImageAspectFlagBits::eColor,
+                loadAllMipMaps ? ddsImage.numMips : 1);
+            Util::PipelineBarrier(mTransferCommand, imageBarrier);
             const auto buffer = Util::UploadToImage(
                 mContext,
                 mTransferCommand,
                 mTransferQueue.index,
-                ddsImage.mipmaps.front(),
+                ddsImage.mipmaps,
+                mipLevel,
+                loadAllMipMaps,
                 extent,
                 image);
             Util::EndCommand(mTransferCommand);
             Util::SubmitQueueHost(mTransferQueue, mTransferCommand, mTransferFence);
+            Util::WaitFence(mContext, mTransferFence);
             buffer.Destroy(mContext);
         }
         const auto arrayElement = static_cast<u32>(mSamplerImages.size() - 1);
@@ -633,8 +662,6 @@ namespace Swift
     {
         const auto commandBuffer = Render::GetCommandBuffer(mFrameData, mCurrentFrame);
         auto [shaders, stageFlags, layout] = mShaders.at(mCurrentShader);
-        commandBuffer
-            .bindDescriptorSets(vk::PipelineBindPoint::eCompute, layout, 0, mDescriptor.set, {});
         commandBuffer.dispatch(x, y, z);
     }
 

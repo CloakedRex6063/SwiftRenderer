@@ -43,6 +43,18 @@ namespace Swift::Vulkan
         return indices;
     }
 
+    vk::Extent3D Util::GetMipExtent(
+        vk::Extent3D extent,
+        int mipLevel)
+    {
+        assert(mipLevel >= 0);
+
+        u32 mipWidth = std::max(extent.width >> mipLevel, 1u);
+        u32 mipHeight = std::max(extent.height >> mipLevel, 1u);
+        u32 mipDepth = std::max(extent.depth >> mipLevel, 1u);
+        return {mipWidth, mipHeight, mipDepth};
+    }
+
     void Util::HandleSubOptimalSwapchain(
         const u32 graphicsFamily,
         const Context& context,
@@ -158,11 +170,11 @@ namespace Swift::Vulkan
     }
 
     void Util::UpdateDescriptorSampler(
-    const vk::DescriptorSet set,
-    const vk::ImageView imageView,
-    const vk::Sampler sampler,
-    const u32 arrayElement,
-    const vk::Device& device)
+        const vk::DescriptorSet set,
+        const vk::ImageView imageView,
+        const vk::Sampler sampler,
+        const u32 arrayElement,
+        const vk::Device& device)
     {
         const auto imageInfo = vk::DescriptorImageInfo()
                                    .setImageLayout(vk::ImageLayout::eGeneral)
@@ -179,35 +191,12 @@ namespace Swift::Vulkan
         device.updateDescriptorSets(samplerWriteInfo, {});
     }
 
-    vk::ImageSubresourceRange Util::GetImageSubresourceRange(
-        const vk::ImageAspectFlags aspectMask,
-        const u32 mipCount)
-    {
-        const auto range = vk::ImageSubresourceRange()
-                               .setAspectMask(aspectMask)
-                               .setBaseArrayLayer(0)
-                               .setBaseMipLevel(0)
-                               .setLayerCount(1)
-                               .setLevelCount(mipCount);
-        return range;
-    }
-
-    vk::ImageSubresourceLayers
-    Util::GetImageSubresourceLayers(const vk::ImageAspectFlags aspectMask)
-    {
-        const auto range = vk::ImageSubresourceLayers()
-                               .setAspectMask(aspectMask)
-                               .setBaseArrayLayer(0)
-                               .setLayerCount(1)
-                               .setMipLevel(0);
-        return range;
-    }
-
     vk::ImageMemoryBarrier2 Util::ImageBarrier(
         const vk::ImageLayout oldLayout,
         const vk::ImageLayout newLayout,
         Image& image,
-        const vk::ImageAspectFlags flags)
+        const vk::ImageAspectFlags flags,
+        const int mipCount)
     {
         const auto imageBarrier =
             vk::ImageMemoryBarrier2()
@@ -218,7 +207,7 @@ namespace Swift::Vulkan
                 .setDstStageMask(vk::PipelineStageFlagBits2::eAllCommands)
                 .setOldLayout(oldLayout)
                 .setNewLayout(newLayout)
-                .setSubresourceRange(GetImageSubresourceRange(flags))
+                .setSubresourceRange(GetImageSubresourceRange(flags, mipCount))
                 .setImage(image);
         image.currentLayout = newLayout;
         return imageBarrier;
@@ -247,17 +236,25 @@ namespace Swift::Vulkan
         const Context& context,
         const vk::CommandBuffer commandBuffer,
         const u32 queueIndex,
-        const std::span<u8> imageData,
+        const std::vector<std::span<u8>>& imageData,
+        const int mipLevel,
+        const bool loadAllMips,
         const vk::Extent3D extent,
         Image& image)
     {
-        const auto imageBarrier = ImageBarrier(
-            image.currentLayout,
-            vk::ImageLayout::eTransferDstOptimal,
-            image,
-            vk::ImageAspectFlagBits::eColor);
-        PipelineBarrier(commandBuffer, imageBarrier);
-        const auto imageSize = imageData.size() * sizeof(u8);
+
+        u32 imageSize = 0;
+        if (loadAllMips)
+        {
+            for (u32 i = 0; i < imageData.size(); i++)
+            {
+                imageSize += imageData[i].size();
+            }
+        }
+        else
+        {
+            imageSize = imageData[mipLevel].size() * sizeof(u8);
+        }
         auto [staging, alloc, allocInfo] = Init::CreateBuffer(
             context,
             queueIndex,
@@ -265,13 +262,32 @@ namespace Swift::Vulkan
             vk::BufferUsageFlagBits::eTransferSrc | vk::BufferUsageFlagBits::eTransferDst);
         const auto buffer =
             Buffer().SetBuffer(staging).SetAllocation(alloc).SetAllocationInfo(allocInfo);
-        UploadToBuffer(context, imageData.data(), buffer, 0, imageSize);
-        CopyBufferToImage(commandBuffer, staging, extent, image);
+        // TODO: Only create buffer
+
+        std::span<u8> stagingData;
+        if (loadAllMips)
+        {
+            stagingData = std::span(imageData[0].data(), imageSize);
+        }
+        else
+        {
+            stagingData = imageData[mipLevel];
+        }
+
+        UploadToBuffer(context, stagingData.data(), buffer, 0, imageSize);
+        CopyBufferToImage(
+            commandBuffer,
+            staging,
+            extent,
+            static_cast<int>(imageData.size()),
+            loadAllMips,
+            image);
         const auto dstImageBarrier = ImageBarrier(
             image.currentLayout,
             vk::ImageLayout::eShaderReadOnlyOptimal,
             image,
-            vk::ImageAspectFlagBits::eColor);
+            vk::ImageAspectFlagBits::eColor,
+            loadAllMips ? imageData.size() : 1);
         PipelineBarrier(commandBuffer, dstImageBarrier);
         return buffer;
     }
@@ -280,17 +296,38 @@ namespace Swift::Vulkan
         const vk::CommandBuffer commandBuffer,
         const vk::Buffer buffer,
         const vk::Extent3D extent,
+        const int maxMips,
+        const bool loadAllMips,
         const vk::Image image)
     {
-
-        const auto bufferImageCopy =
-            vk::BufferImageCopy2().setImageExtent(extent).setImageSubresource(
-                GetImageSubresourceLayers(vk::ImageAspectFlagBits::eColor));
+        std::vector<vk::BufferImageCopy2> copyRegions;
+        if (loadAllMips)
+        {
+            int offset = 0;
+            for (int i = 0; i < maxMips; i++)
+            {
+                const auto depth = extent.depth > 1 ? extent.width >> i : 1;
+                const auto mipExtent =
+                    vk::Extent3D{extent.width >> i, extent.height >> i, depth};
+                const auto bufferImageCopy =
+                    vk::BufferImageCopy2().setImageExtent(mipExtent).setImageSubresource(
+                        GetImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, i)).setBufferOffset(offset);
+                copyRegions.emplace_back(bufferImageCopy);
+                offset += mipExtent.width * mipExtent.height * mipExtent.depth;
+            }
+        }
+        else
+        {
+            const auto bufferImageCopy =
+                vk::BufferImageCopy2().setImageExtent(extent).setImageSubresource(
+                    GetImageSubresourceLayers(vk::ImageAspectFlagBits::eColor));
+            copyRegions.emplace_back(bufferImageCopy);
+        }
         const auto bufferToImageInfo = vk::CopyBufferToImageInfo2()
                                            .setSrcBuffer(buffer)
                                            .setDstImage(image)
                                            .setDstImageLayout(vk::ImageLayout::eTransferDstOptimal)
-                                           .setRegions(bufferImageCopy);
+                                           .setRegions(copyRegions);
         commandBuffer.copyBufferToImage2(bufferToImageInfo);
     }
 
