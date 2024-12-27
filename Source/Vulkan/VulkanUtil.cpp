@@ -44,11 +44,9 @@ namespace Swift::Vulkan
     }
 
     vk::Extent3D Util::GetMipExtent(
-        vk::Extent3D extent,
-        int mipLevel)
+        const vk::Extent3D extent,
+        const u32 mipLevel)
     {
-        assert(mipLevel >= 0);
-
         u32 mipWidth = std::max(extent.width >> mipLevel, 1u);
         u32 mipHeight = std::max(extent.height >> mipLevel, 1u);
         u32 mipDepth = std::max(extent.depth >> mipLevel, 1u);
@@ -196,7 +194,7 @@ namespace Swift::Vulkan
         const vk::ImageLayout newLayout,
         Image& image,
         const vk::ImageAspectFlags flags,
-        const int mipCount)
+        const u32 mipCount)
     {
         const auto imageBarrier =
             vk::ImageMemoryBarrier2()
@@ -232,16 +230,20 @@ namespace Swift::Vulkan
             vk::ClearColorValue(clearColor),
             GetImageSubresourceRange(vk::ImageAspectFlagBits::eColor));
     }
-    
-    void* Util::MapBuffer(const Context& context, const Buffer& buffer)
+
+    void* Util::MapBuffer(
+        const Context& context,
+        const Buffer& buffer)
     {
         void* mapped;
         const auto result = vmaMapMemory(context.allocator, buffer.allocation, &mapped);
         assert(result == VK_SUCCESS && "Failed to map buffer");
         return mapped;
     }
-    
-    void Util::UnmapBuffer(const Context& context, const Buffer& buffer)
+
+    void Util::UnmapBuffer(
+        const Context& context,
+        const Buffer& buffer)
     {
         vmaUnmapMemory(context.allocator, buffer.allocation);
     }
@@ -250,59 +252,46 @@ namespace Swift::Vulkan
         const Context& context,
         const vk::CommandBuffer commandBuffer,
         const u32 queueIndex,
-        const std::vector<std::span<u8>>& imageData,
-        const int mipLevel,
+        const std::span<std::span<u8>>& imageData,
+        const u32 mipLevel,
         const bool loadAllMips,
         const vk::Extent3D extent,
-        Image& image)
+        const Image& image)
     {
-
+        const auto maxMips = imageData.size();
         u32 imageSize = 0;
-        if (loadAllMips)
+        for (u32 i = 0; i < maxMips; ++i)
         {
-            for (u32 i = 0; i < imageData.size(); i++)
-            {
-                imageSize += imageData[i].size();
-            }
+            imageSize += imageData[i].size();
         }
-        else
+        if (!loadAllMips)
         {
-            imageSize = imageData[mipLevel].size() * sizeof(u8);
+            imageSize = imageData[mipLevel].size();
         }
         auto [staging, alloc, allocInfo] = Init::CreateBuffer(
             context,
             queueIndex,
             imageSize,
-            vk::BufferUsageFlagBits::eTransferSrc | vk::BufferUsageFlagBits::eTransferDst);
+            vk::BufferUsageFlagBits::eTransferSrc);
         const auto buffer =
             Buffer().SetBuffer(staging).SetAllocation(alloc).SetAllocationInfo(allocInfo);
-        // TODO: Only create buffer
 
-        std::span<u8> stagingData;
         if (loadAllMips)
         {
-            stagingData = std::span(imageData[0].data(), imageSize);
+            u32 offset = 0;
+            for (u32 i = 0; i < maxMips; ++i)
+            {
+                UploadToBuffer(context, imageData[i].data(), buffer, offset, imageData[i].size());
+                offset += imageData[i].size();
+                offset = (offset + 15) & ~15;
+            }
         }
         else
         {
-            stagingData = imageData[mipLevel];
+            UploadToBuffer(context, imageData[mipLevel].data(), buffer, 0, imageData[mipLevel].size());
         }
-
-        UploadToBuffer(context, stagingData.data(), buffer, 0, imageSize);
-        CopyBufferToImage(
-            commandBuffer,
-            staging,
-            extent,
-            static_cast<int>(imageData.size()),
-            loadAllMips,
-            image);
-        const auto dstImageBarrier = ImageBarrier(
-            image.currentLayout,
-            vk::ImageLayout::eShaderReadOnlyOptimal,
-            image,
-            vk::ImageAspectFlagBits::eColor,
-            loadAllMips ? imageData.size() : 1);
-        PipelineBarrier(commandBuffer, dstImageBarrier);
+        
+        CopyBufferToImage(commandBuffer, staging, extent, maxMips, loadAllMips, image);
         return buffer;
     }
 
@@ -310,24 +299,30 @@ namespace Swift::Vulkan
         const vk::CommandBuffer commandBuffer,
         const vk::Buffer buffer,
         const vk::Extent3D extent,
-        const int maxMips,
+        const u32 maxMips,
         const bool loadAllMips,
         const vk::Image image)
     {
         std::vector<vk::BufferImageCopy2> copyRegions;
         if (loadAllMips)
         {
-            int offset = 0;
+            u32 offset = 0;
             for (int i = 0; i < maxMips; i++)
             {
-                const auto depth = extent.depth > 1 ? extent.width >> i : 1;
-                const auto mipExtent =
-                    vk::Extent3D{extent.width >> i, extent.height >> i, depth};
+                vk::Extent3D mipExtent = {
+                    std::max(1u, extent.width >> i),  
+                    std::max(1u, extent.height >> i),
+                    std::max(1u, extent.depth >> i)
+                };
                 const auto bufferImageCopy =
-                    vk::BufferImageCopy2().setImageExtent(mipExtent).setImageSubresource(
-                        GetImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, i)).setBufferOffset(offset);
+                    vk::BufferImageCopy2()
+                        .setImageExtent(mipExtent)
+                        .setImageSubresource(
+                            GetImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, i))
+                        .setBufferOffset(offset);
                 copyRegions.emplace_back(bufferImageCopy);
                 offset += mipExtent.width * mipExtent.height * mipExtent.depth;
+                offset = (offset + 15) & ~15;
             }
         }
         else

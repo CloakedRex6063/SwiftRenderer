@@ -13,7 +13,7 @@ namespace Swift::Vulkan::Util
 
     vk::Extent3D GetMipExtent(
         vk::Extent3D extent,
-        int mipLevel);
+        u32 mipLevel);
 
     void HandleSubOptimalSwapchain(
         u32 graphicsFamily,
@@ -91,17 +91,17 @@ namespace Swift::Vulkan::Util
         const Context& context,
         vk::CommandBuffer commandBuffer,
         u32 queueIndex,
-        const std::vector<std::span<u8>>& imageData,
-        int mipLevel,
+        const std::span<std::span<u8>>& imageData,
+        u32 mipLevel,
         bool loadAllMips,
         vk::Extent3D extent,
-        Image& image);
+        const Image& image);
 
     void CopyBufferToImage(
         vk::CommandBuffer commandBuffer,
         vk::Buffer buffer,
         vk::Extent3D extent,
-        int maxMips,
+        u32 maxMips,
         bool loadAllMips,
         vk::Image image);
 
@@ -185,7 +185,7 @@ namespace Swift::Vulkan::Util
         vk::ImageLayout newLayout,
         Image& image,
         vk::ImageAspectFlags flags,
-        int mipCount = 1);
+        u32 mipCount = 1);
 
     void PipelineBarrier(
         vk::CommandBuffer commandBuffer,

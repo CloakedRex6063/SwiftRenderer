@@ -613,11 +613,11 @@ namespace Swift::Vulkan
         const vk::Instance instance,
         const vk::Device device)
     {
-        return vk::DispatchLoaderDynamic(
+        return {
             instance,
             vkGetInstanceProcAddr,
             device,
-            vkGetDeviceProcAddr);
+            vkGetDeviceProcAddr};
     }
     
     vk::Sampler Init::CreateSampler(const vk::Device device)
