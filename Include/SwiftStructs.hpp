@@ -74,9 +74,15 @@ namespace Swift
     
     struct ImageObject
     {
+        ImageType type;
         glm::uvec2 extent{};
         u32 index = 0;
 
+        ImageObject& SetType(const ImageType type)
+        {
+            this->type = type;
+            return *this;
+        }
         ImageObject& SetExtent(const glm::uvec2 extent)
         {
             this->extent = extent;

@@ -34,7 +34,6 @@ namespace Swift::Vulkan::Init
         const Context& context,
         const vk::ImageViewCreateInfo& createInfo,
         std::string_view debugName = "Image View");
-
     vk::ImageView CreateImageView(
         const Context& context,
         vk::Image image,
@@ -51,6 +50,7 @@ namespace Swift::Vulkan::Init
         const Context& context,
         vk::Image image,
         std::string_view debugName);
+    
     std::tuple<
         vk::Image,
         VmaAllocation>
@@ -67,7 +67,6 @@ namespace Swift::Vulkan::Init
     CreateImage(
         const Context& context,
         const VkImageCreateInfo& info);
-
     std::vector<Image> CreateSwapchainImages(
         const Context& context,
         const Swapchain& swapchain);
@@ -89,6 +88,7 @@ namespace Swift::Vulkan::Init
     vk::Semaphore CreateSemaphore(
         const Context& context,
         std::string_view debugName);
+    
     vk::CommandBuffer CreateCommandBuffer(
         const Context& context,
         vk::CommandPool commandPool,
@@ -97,9 +97,12 @@ namespace Swift::Vulkan::Init
         const Context& context,
         u32 queueIndex,
         std::string_view debugName);
+    
     vk::DispatchLoaderDynamic CreateDynamicLoader(
         vk::Instance instance,
         vk::Device device);
+
+    vk::Sampler CreateSampler(vk::Device device);
 
     vk::DescriptorSetLayout CreateDescriptorSetLayout(vk::Device device);
     vk::DescriptorPool CreateDescriptorPool(vk::Device device);

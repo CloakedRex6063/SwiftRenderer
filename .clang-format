@@ -14,7 +14,8 @@ AlignAfterOpenBracket: AlwaysBreak
 IndentAccessModifiers: false
 AccessModifierOffset: -4
 AlwaysBreakBeforeMultilineStrings: true
-BreakAfterAttributes: Never
+BreakAfterAttributes: Always
+BreakTemplateDeclarations: Yes
 NamespaceIndentation: All
 PointerAlignment: Left
 BraceWrapping:

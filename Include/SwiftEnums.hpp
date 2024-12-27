@@ -6,6 +6,12 @@ enum class ImageFormat : uint8_t
     eR32G32B32A32_SRGB,
 };
 
+enum class ImageType : uint8_t
+{
+    eReadWrite,
+    eReadOnly,
+};
+
 enum class BufferType : uint8_t
 {
     eUniform,

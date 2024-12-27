@@ -619,6 +619,26 @@ namespace Swift::Vulkan
             device,
             vkGetDeviceProcAddr);
     }
+    
+    vk::Sampler Init::CreateSampler(const vk::Device device)
+    {
+        constexpr auto samplerCreateInfo = vk::SamplerCreateInfo()
+                                       .setMagFilter(vk::Filter::eLinear)
+                                       .setMinFilter(vk::Filter::eLinear)
+                                       .setAddressModeU(vk::SamplerAddressMode::eRepeat)
+                                       .setAddressModeV(vk::SamplerAddressMode::eRepeat)
+                                       .setAddressModeW(vk::SamplerAddressMode::eRepeat)
+                                       .setBorderColor(vk::BorderColor::eIntOpaqueBlack)
+                                       .setUnnormalizedCoordinates(false)
+                                       .setCompareOp(vk::CompareOp::eAlways)
+                                       .setCompareEnable(false)
+                                       .setMipmapMode(vk::SamplerMipmapMode::eLinear)
+                                       .setMinLod(0)
+                                       .setMaxLod(50);
+        const auto [result, sampler] = device.createSampler(samplerCreateInfo);
+        VK_ASSERT(result, "Failed to create sampler!");
+        return sampler;
+    }
 
     vk::DescriptorSetLayout Init::CreateDescriptorSetLayout(const vk::Device device)
     {
