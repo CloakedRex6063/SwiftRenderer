@@ -1,9 +1,7 @@
 #pragma once
 #include "SwiftStructs.hpp"
 
-
-
-namespace Swift::Renderer
+namespace Swift
 {
     void Init(const InitInfo& initInfo);
     void Shutdown();
@@ -83,6 +81,8 @@ namespace Swift::Renderer
         u32 x,
         u32 y,
         u32 z);
-    
-    void PushConstant(void* value, u32 size);
-} // namespace Swift::Renderer
+
+    void PushConstant(
+        const void* value,
+        u32 size);
+} // namespace Swift

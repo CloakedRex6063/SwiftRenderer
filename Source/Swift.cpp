@@ -35,7 +35,7 @@ namespace
 
 using namespace Vulkan;
 
-void Renderer::Init(const InitInfo& initInfo)
+void Swift::Init(const InitInfo& initInfo)
 {
     gContext.SetInstance(Init::CreateInstance(initInfo.appName, initInfo.engineName))
         .SetSurface(Init::CreateSurface(gContext.instance, initInfo.hwnd))
@@ -119,7 +119,7 @@ void Renderer::Init(const InitInfo& initInfo)
     gTransferFence = Init::CreateFence(gContext, {}, "Transfer Fence");
 }
 
-void Renderer::Shutdown()
+void Swift::Shutdown()
 {
     const auto result = gContext.device.waitIdle();
     VK_ASSERT(result, "Failed to wait for device while cleaning up");
@@ -163,7 +163,7 @@ void Renderer::Shutdown()
     gContext.Destroy();
 }
 
-void Renderer::BeginFrame(const DynamicInfo& dynamicInfo)
+void Swift::BeginFrame(const DynamicInfo& dynamicInfo)
 {
     const auto& commandBuffer = Render::GetCommandBuffer(gFrameData, gCurrentFrame);
     const auto& renderSemaphore = Render::GetRenderSemaphore(gFrameData, gCurrentFrame);
@@ -181,7 +181,7 @@ void Renderer::BeginFrame(const DynamicInfo& dynamicInfo)
     Util::BeginOneTimeCommand(commandBuffer);
 }
 
-void Renderer::EndFrame(const DynamicInfo& dynamicInfo)
+void Swift::EndFrame(const DynamicInfo& dynamicInfo)
 {
     const auto& commandBuffer = Render::GetCommandBuffer(gFrameData, gCurrentFrame);
     const auto& renderSemaphore = Render::GetRenderSemaphore(gFrameData, gCurrentFrame);
@@ -238,20 +238,20 @@ void Renderer::EndFrame(const DynamicInfo& dynamicInfo)
     gCurrentFrame = (gCurrentFrame + 1) % gSwapchain.images.size();
 }
 
-void Renderer::BeginRendering()
+void Swift::BeginRendering()
 {
     const auto& commandBuffer = Render::GetCommandBuffer(gFrameData, gCurrentFrame);
     Render::BeginRendering(commandBuffer, gSwapchain);
     Render::DefaultRenderConfig(commandBuffer, gSwapchain.extent, gContext.dynamicLoader);
 }
 
-void Renderer::EndRendering()
+void Swift::EndRendering()
 {
     const auto& commandBuffer = Render::GetCommandBuffer(gFrameData, gCurrentFrame);
     commandBuffer.endRendering();
 }
 
-ShaderObject Renderer::CreateGraphicsShaderObject(
+ShaderObject Swift::CreateGraphicsShaderObject(
     const std::string_view vertexPath,
     const std::string_view fragmentPath,
     const u32 pushConstantSize)
@@ -306,7 +306,7 @@ ShaderObject Renderer::CreateGraphicsShaderObject(
     return ShaderObject().SetIndex(index);
 }
 
-ShaderObject Renderer::CreateComputeShaderObject(
+ShaderObject Swift::CreateComputeShaderObject(
     const std::string& computePath,
     const u32 pushConstantSize)
 {
@@ -347,7 +347,7 @@ ShaderObject Renderer::CreateComputeShaderObject(
     return ShaderObject().SetIndex(index);
 }
 
-void Renderer::BindShader(const ShaderObject& shaderObject)
+void Swift::BindShader(const ShaderObject& shaderObject)
 {
     const auto& commandBuffer = Render::GetCommandBuffer(gFrameData, gCurrentFrame);
     const auto& [shaders, stageFlags, pipelineLayout] = gShaders.at(shaderObject.index);
@@ -363,7 +363,7 @@ void Renderer::BindShader(const ShaderObject& shaderObject)
     gCurrentShader = shaderObject.index;
 }
 
-void Renderer::Draw(
+void Swift::Draw(
     const u32 vertexCount,
     const u32 instanceCount,
     const u32 firstVertex,
@@ -373,7 +373,7 @@ void Renderer::Draw(
     commandBuffer.draw(vertexCount, instanceCount, firstVertex, firstInstance);
 }
 
-void Renderer::DrawIndexed(
+void Swift::DrawIndexed(
     const u32 indexCount,
     const u32 instanceCount,
     const u32 firstIndex,
@@ -384,7 +384,7 @@ void Renderer::DrawIndexed(
     commandBuffer.drawIndexed(indexCount, instanceCount, firstIndex, vertexOffset, firstInstance);
 }
 
-ImageObject Renderer::CreateWriteableImage(glm::uvec2 size)
+ImageObject Swift::CreateWriteableImage(glm::uvec2 size)
 {
     constexpr auto imageUsage = vk::ImageUsageFlagBits::eColorAttachment |
                                 vk::ImageUsageFlagBits::eTransferSrc |
@@ -416,7 +416,7 @@ ImageObject Renderer::CreateWriteableImage(glm::uvec2 size)
     return ImageObject().SetExtent(size).SetIndex(static_cast<u32>(gWriteableImages.size() - 1));
 }
 
-ImageObject Renderer::CreateImageFromFile(
+ImageObject Swift::CreateImageFromFile(
     const std::filesystem::path& filePath,
     int mipLevel,
     bool loadAllMipMaps)
@@ -490,7 +490,7 @@ ImageObject Renderer::CreateImageFromFile(
     return ImageObject().SetExtent({extent.width, extent.height}).SetIndex(arrayElement);
 }
 
-void Renderer::DestroyImage(const ImageObject imageObject)
+void Swift::DestroyImage(const ImageObject imageObject)
 {
     auto& realImage = gWriteableImages.at(imageObject.index);
     const auto it = std::ranges::find_if(
@@ -503,9 +503,9 @@ void Renderer::DestroyImage(const ImageObject imageObject)
     realImage.Destroy(gContext);
 }
 
-BufferObject Renderer::CreateBuffer(
-    BufferType bufferType,
-    u32 size)
+BufferObject Swift::CreateBuffer(
+    const BufferType bufferType,
+    const u32 size)
 {
     vk::BufferUsageFlags bufferUsageFlags = vk::BufferUsageFlagBits::eShaderDeviceAddress;
     switch (bufferType)
@@ -530,7 +530,7 @@ BufferObject Renderer::CreateBuffer(
     return BufferObject().SetIndex(index).SetSize(size);
 }
 
-void Renderer::DestroyBuffer(BufferObject bufferObject)
+void Swift::DestroyBuffer(const BufferObject bufferObject)
 {
     const auto& realBuffer = gBuffers.at(bufferObject.index);
     const auto it = std::ranges::find_if(
@@ -543,19 +543,19 @@ void Renderer::DestroyBuffer(BufferObject bufferObject)
     realBuffer.Destroy(gContext);
 }
 
-void* Renderer::MapBuffer(BufferObject bufferObject)
+void* Swift::MapBuffer(const BufferObject bufferObject)
 {
     const auto& realBuffer = gBuffers.at(bufferObject.index);
     return Util::MapBuffer(gContext, realBuffer);
 }
 
-void Renderer::UnmapBuffer(BufferObject bufferObject)
+void Swift::UnmapBuffer(const BufferObject bufferObject)
 {
     const auto& realBuffer = gBuffers.at(bufferObject.index);
     Util::UnmapBuffer(gContext, realBuffer);
 }
 
-void Renderer::UploadToBuffer(
+void Swift::UploadToBuffer(
     const BufferObject& buffer,
     const void* data,
     const u64 offset,
@@ -565,7 +565,7 @@ void Renderer::UploadToBuffer(
     Util::UploadToBuffer(gContext, data, realBuffer, offset, size);
 }
 
-void Renderer::UploadToMapped(
+void Swift::UploadToMapped(
     void* mapped,
     const void* data,
     const u64 offset,
@@ -574,21 +574,21 @@ void Renderer::UploadToMapped(
     Util::UploadToMapped(data, mapped, offset, size);
 }
 
-u64 Renderer::GetBufferAddress(const BufferObject& buffer)
+u64 Swift::GetBufferAddress(const BufferObject& buffer)
 {
     const auto& realBuffer = gBuffers.at(buffer.index);
     const auto addressInfo = vk::BufferDeviceAddressInfo().setBuffer(realBuffer.buffer);
     return gContext.device.getBufferAddress(addressInfo);
 }
 
-void Renderer::BindIndexBuffer(const BufferObject& bufferObject)
+void Swift::BindIndexBuffer(const BufferObject& bufferObject)
 {
     const auto& realBuffer = gBuffers.at(bufferObject.index);
     const auto& commandBuffer = Render::GetCommandBuffer(gFrameData, gCurrentFrame);
     commandBuffer.bindIndexBuffer(realBuffer, 0, vk::IndexType::eUint32);
 }
 
-void Renderer::CopyImage(
+void Swift::CopyImage(
     const ImageObject srcImageObject,
     const ImageObject dstImageObject,
     const glm::uvec2 extent)
@@ -612,7 +612,7 @@ void Renderer::CopyImage(
     Util::CopyImage(commandBuffer, srcImage, srcLayout, dstImage, dstLayout, Util::To2D(extent));
 }
 
-void Renderer::CopyToSwapchain(
+void Swift::CopyToSwapchain(
     ImageObject srcImageObject,
     glm::uvec2 extent)
 {
@@ -635,7 +635,7 @@ void Renderer::CopyToSwapchain(
     Util::CopyImage(commandBuffer, srcImage, srcLayout, dstImage, dstLayout, Util::To2D(extent));
 }
 
-void Renderer::BlitImage(
+void Swift::BlitImage(
     ImageObject srcImageObject,
     ImageObject dstImageObject,
     glm::uvec2 srcOffset,
@@ -668,9 +668,9 @@ void Renderer::BlitImage(
         Util::To2D(dstOffset));
 }
 
-void Renderer::BlitToSwapchain(
-    ImageObject srcImageObject,
-    glm::uvec2 srcExtent)
+void Swift::BlitToSwapchain(
+    const ImageObject srcImageObject,
+    const glm::uvec2 srcExtent)
 {
     const auto commandBuffer = Render::GetCommandBuffer(gFrameData, gCurrentFrame);
     constexpr auto srcLayout = vk::ImageLayout::eTransferSrcOptimal;
@@ -699,7 +699,7 @@ void Renderer::BlitToSwapchain(
         gSwapchain.extent);
 }
 
-void Renderer::DispatchCompute(
+void Swift::DispatchCompute(
     const u32 x,
     const u32 y,
     const u32 z)
@@ -708,8 +708,8 @@ void Renderer::DispatchCompute(
     commandBuffer.dispatch(x, y, z);
 }
 
-void Renderer::PushConstant(
-    void* value,
+void Swift::PushConstant(
+    const void* value,
     const u32 size)
 {
     const auto commandBuffer = Render::GetCommandBuffer(gFrameData, gCurrentFrame);

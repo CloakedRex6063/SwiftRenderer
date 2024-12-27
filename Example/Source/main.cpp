@@ -42,9 +42,9 @@ int main()
         parser.LoadModelFromFile("../../../Example/Models/Helmet/DamagedHelmet.gltf");
     models.emplace_back(modelOpt.value());
 
-    Swift::Renderer::Init(initInfo);
+    Swift::Init(initInfo);
 
-    const auto ddsImage = Swift::Renderer::CreateImageFromFile(
+    const auto ddsImage = Swift::CreateImageFromFile(
         "../../../Example/Models/Helmet/Default_albedo.dds",
         0,
         false);
@@ -54,10 +54,10 @@ int main()
     //     int index;
     // } computePushConstant{};
     //
-    // const auto computeShaderObject = Swift::Renderer::CreateComputeShaderObject(
+    // const auto computeShaderObject = Swift::CreateComputeShaderObject(
     //     "../Shaders/triangle.comp.spv",
     //     sizeof(ComputePushConstant));
-    // const auto computeImage = Swift::Renderer::CreateWriteableImage(initInfo.extent);
+    // const auto computeImage = Swift::CreateWriteableImage(initInfo.extent);
     // computePushConstant.index = computeImage.index;
 
     struct Camera
@@ -73,33 +73,33 @@ int main()
     camera.proj = glm::perspective(glm::radians(60.f), 1280.f / 720.f, 0.1f, 1000.f);
     camera.proj[1][1] *= -1;
 
-    const auto cameraBuffer = Swift::Renderer::CreateBuffer(BufferType::eStorage, sizeof(Camera));
-    Swift::Renderer::UploadToBuffer(cameraBuffer, &camera, 0, sizeof(Camera));
+    const auto cameraBuffer = Swift::CreateBuffer(BufferType::eStorage, sizeof(Camera));
+    Swift::UploadToBuffer(cameraBuffer, &camera, 0, sizeof(Camera));
 
     const auto transformBuffer =
-        Swift::Renderer::CreateBuffer(BufferType::eStorage, sizeof(glm::mat4) * 10000);
-    Swift::Renderer::UploadToBuffer(
+        Swift::CreateBuffer(BufferType::eStorage, sizeof(glm::mat4) * 10000);
+    Swift::UploadToBuffer(
         transformBuffer,
         models[0].transforms.data(),
         0,
         sizeof(glm::mat4) * models[0].transforms.size());
 
     const auto vertexSize = sizeof(Vertex) * models[0].vertices.size();
-    const auto vertexPullBuffer = Swift::Renderer::CreateBuffer(BufferType::eStorage, vertexSize);
-    Swift::Renderer::UploadToBuffer(vertexPullBuffer, models[0].vertices.data(), 0, vertexSize);
+    const auto vertexPullBuffer = Swift::CreateBuffer(BufferType::eStorage, vertexSize);
+    Swift::UploadToBuffer(vertexPullBuffer, models[0].vertices.data(), 0, vertexSize);
 
     auto materialSize = sizeof(Material) * models[0].materials.size();
     const auto materialPullBuffer =
-        Swift::Renderer::CreateBuffer(BufferType::eStorage, materialSize);
-    Swift::Renderer::UploadToBuffer(
+        Swift::CreateBuffer(BufferType::eStorage, materialSize);
+    Swift::UploadToBuffer(
         materialPullBuffer,
         models[0].materials.data(),
         0,
         materialSize);
 
     const auto indexSize = sizeof(u32) * models[0].indices.size();
-    const auto indexBuffer = Swift::Renderer::CreateBuffer(BufferType::eIndex, indexSize);
-    Swift::Renderer::UploadToBuffer(indexBuffer, models[0].indices.data(), 0, indexSize);
+    const auto indexBuffer = Swift::CreateBuffer(BufferType::eIndex, indexSize);
+    Swift::UploadToBuffer(indexBuffer, models[0].indices.data(), 0, indexSize);
 
     struct ModelPushConstant
     {
@@ -111,13 +111,13 @@ int main()
         u64 materialIndex;
     } modelPushConstant{};
 
-    modelPushConstant.cameraBufferAddress = Swift::Renderer::GetBufferAddress(cameraBuffer);
-    modelPushConstant.transformBufferAddress = Swift::Renderer::GetBufferAddress(transformBuffer);
+    modelPushConstant.cameraBufferAddress = Swift::GetBufferAddress(cameraBuffer);
+    modelPushConstant.transformBufferAddress = Swift::GetBufferAddress(transformBuffer);
     ;
-    modelPushConstant.vertexBufferAddress = Swift::Renderer::GetBufferAddress(vertexPullBuffer);
-    modelPushConstant.materialBufferAddress = Swift::Renderer::GetBufferAddress(materialPullBuffer);
+    modelPushConstant.vertexBufferAddress = Swift::GetBufferAddress(vertexPullBuffer);
+    modelPushConstant.materialBufferAddress = Swift::GetBufferAddress(materialPullBuffer);
 
-    const auto modelShaderObject = Swift::Renderer::CreateGraphicsShaderObject(
+    const auto modelShaderObject = Swift::CreateGraphicsShaderObject(
         "../Shaders/model.vert.spv",
         "../Shaders/model.frag.spv",
         sizeof(ModelPushConstant));
@@ -126,35 +126,35 @@ int main()
     {
         glfwPollEvents();
         const auto dynamicInfo = Swift::DynamicInfo().SetExtent(extent);
-        Swift::Renderer::BeginFrame(dynamicInfo);
+        Swift::BeginFrame(dynamicInfo);
 
-        // Swift::Renderer::BindShader(computeShaderObject);
-        // Swift::Renderer::PushConstant(computePushConstant);
-        // Swift::Renderer::DispatchCompute(std::ceil(extent.x / 32), std::ceil(extent.x / 32), 1);
-        // Swift::Renderer::BlitToSwapchain(computeImage, computeImage.extent);
+        // Swift::BindShader(computeShaderObject);
+        // Swift::PushConstant(computePushConstant);
+        // Swift::DispatchCompute(std::ceil(extent.x / 32), std::ceil(extent.x / 32), 1);
+        // Swift::BlitToSwapchain(computeImage, computeImage.extent);
 
-        Swift::Renderer::BeginRendering();
+        Swift::BeginRendering();
 
-        Swift::Renderer::BindShader(modelShaderObject);
+        Swift::BindShader(modelShaderObject);
 
         for (const auto& model : models)
         {
-            Swift::Renderer::BindIndexBuffer(indexBuffer);
+            Swift::BindIndexBuffer(indexBuffer);
             for (const auto& [vertexOffset, firstIndex, indexCount, materialIndex, transformIndex] :
                  model.meshes)
             {
                 modelPushConstant.transformIndex = transformIndex;
                 modelPushConstant.materialIndex = materialIndex;
-                Swift::Renderer::PushConstant(&modelPushConstant, sizeof(ModelPushConstant));
-                Swift::Renderer::DrawIndexed(indexCount, 1, firstIndex, vertexOffset, 0);
+                Swift::PushConstant(&modelPushConstant, sizeof(ModelPushConstant));
+                Swift::DrawIndexed(indexCount, 1, firstIndex, vertexOffset, 0);
             }
         }
 
-        Swift::Renderer::EndRendering();
+        Swift::EndRendering();
 
-        Swift::Renderer::EndFrame(dynamicInfo);
+        Swift::EndFrame(dynamicInfo);
     }
-    Swift::Renderer::Shutdown();
+    Swift::Shutdown();
 
     glfwDestroyWindow(window);
     glfwTerminate();
