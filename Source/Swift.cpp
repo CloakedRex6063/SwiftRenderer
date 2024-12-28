@@ -243,6 +243,12 @@ void Swift::BeginRendering()
     const auto& commandBuffer = Render::GetCommandBuffer(gFrameData, gCurrentFrame);
     Render::BeginRendering(commandBuffer, gSwapchain);
     Render::DefaultRenderConfig(commandBuffer, gSwapchain.extent, gContext.dynamicLoader);
+
+    VmaBudget budgets[VK_MAX_MEMORY_HEAPS];
+    vmaGetHeapBudgets(gContext.allocator, budgets);
+    printf("Vulkan reports total usage %f GB with budget %f GB.\n",
+    static_cast<float>(budgets[0].statistics.allocationBytes) / (1024.f * 1024.f * 1024.f),
+    static_cast<float>(budgets[0].budget) / (1024.f * 1024.f * 1024.f));
 }
 
 void Swift::EndRendering()
@@ -463,7 +469,7 @@ ImageObject Swift::CreateImageFromFile(
             vk::ImageLayout::eTransferDstOptimal,
             image,
             vk::ImageAspectFlagBits::eColor,
-            loadAllMipMaps ? ddsImage.numMips : 1);
+            loadAllMipMaps ? ddsImage.numMips: 1);
         Util::PipelineBarrier(gTransferCommand, imageBarrier);
         const auto buffer = Util::UploadToImage(
             gContext,
@@ -474,6 +480,13 @@ ImageObject Swift::CreateImageFromFile(
             loadAllMipMaps,
             extent,
             image);
+        const auto dstImageBarrier = Util::ImageBarrier(
+            image.currentLayout,
+            vk::ImageLayout::eShaderReadOnlyOptimal,
+            image,
+            vk::ImageAspectFlagBits::eColor,
+            loadAllMipMaps ? ddsImage.numMips : 1);
+        Util::PipelineBarrier(gTransferCommand, dstImageBarrier);
         Util::EndCommand(gTransferCommand);
         Util::SubmitQueueHost(gTransferQueue, gTransferCommand, gTransferFence);
         Util::WaitFence(gContext, gTransferFence);
@@ -592,12 +605,12 @@ void Swift::ClearSwapchainImage(const glm::vec4 color)
 {
     const auto& commandBuffer = Render::GetCommandBuffer(gFrameData, gCurrentFrame);
     const auto generalBarrier = Util::ImageBarrier(
-    vk::ImageLayout::eUndefined,
-    vk::ImageLayout::eGeneral,
-    gSwapchain.renderImage,
-    vk::ImageAspectFlagBits::eColor);
+        vk::ImageLayout::eUndefined,
+        vk::ImageLayout::eGeneral,
+        gSwapchain.renderImage,
+        vk::ImageAspectFlagBits::eColor);
     Util::PipelineBarrier(commandBuffer, generalBarrier);
-    
+
     const auto clearColor = vk::ClearColorValue(color.x, color.y, color.z, color.w);
     Util::ClearColorImage(commandBuffer, gSwapchain.renderImage, clearColor);
 
@@ -733,8 +746,8 @@ void Swift::PushConstant(
     const void* value,
     const u32 size)
 {
-    const auto commandBuffer = Render::GetCommandBuffer(gFrameData, gCurrentFrame);
-    const auto [shaders, stageFlags, pipelineLayout] = gShaders.at(gCurrentShader);
+    const auto& commandBuffer = Render::GetCommandBuffer(gFrameData, gCurrentFrame);
+    const auto& [shaders, stageFlags, pipelineLayout] = gShaders.at(gCurrentShader);
 
     vk::ShaderStageFlags pushStageFlags;
     if (std::ranges::find(stageFlags, vk::ShaderStageFlagBits::eVertex) != stageFlags.end())
