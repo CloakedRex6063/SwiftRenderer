@@ -5,6 +5,9 @@
 #include "Vulkan/VulkanStructs.hpp"
 #include "Vulkan/VulkanUtil.hpp"
 #include "dds.hpp"
+#include "imgui.h"
+#include "imgui_impl_glfw.h"
+#include "imgui_impl_vulkan.h"
 
 #define VMA_IMPLEMENTATION
 #include "vk_mem_alloc.h"
@@ -31,12 +34,16 @@ namespace
     std::vector<Vulkan::Image> gSamplerImages;
     std::vector<Vulkan::FrameData> gFrameData;
     u32 gCurrentFrame = 0;
+
+    InitInfo gInitInfo;
 } // namespace
 
 using namespace Vulkan;
 
 void Swift::Init(const InitInfo& initInfo)
 {
+    gInitInfo = initInfo;
+    
     gContext.SetInstance(Init::CreateInstance(initInfo.appName, initInfo.engineName))
         .SetSurface(Init::CreateSurface(gContext.instance, initInfo.hwnd))
         .SetGPU(Init::ChooseGPU(gContext.instance, gContext.surface))
@@ -104,7 +111,7 @@ void Swift::Init(const InitInfo& initInfo)
     }
 
     gDescriptor.SetDescriptorSetLayout(Init::CreateDescriptorSetLayout(gContext))
-        .SetDescriptorPool(Init::CreateDescriptorPool(gContext))
+        .SetDescriptorPool(Init::CreateDescriptorPool(gContext, {}))
         .SetDescriptorSet(
             Init::CreateDescriptorSet(gContext, gDescriptor.pool, gDescriptor.setLayout));
 
@@ -117,17 +124,54 @@ void Swift::Init(const InitInfo& initInfo)
         gTransferCommand.commandPool,
         "Transfer Command Buffer");
     gTransferFence = Init::CreateFence(gContext, {}, "Transfer Fence");
+
+    if (initInfo.enableImGui)
+    {
+        IMGUI_CHECKVERSION();
+        ImGui::CreateContext();
+        ImGuiIO& io = ImGui::GetIO();
+        io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;  
+        io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;     
+        io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;  
+        auto format = VK_FORMAT_R16G16B16A16_SFLOAT;
+        ImGui_ImplVulkan_InitInfo vulkanInitInfo{
+            .Instance = gContext.instance,
+            .PhysicalDevice = gContext.gpu,
+            .Device = gContext.device,
+            .QueueFamily = gGraphicsQueue.index,
+            .Queue = gGraphicsQueue.queue,
+            .MinImageCount = Util::GetSwapchainImageCount(gContext.gpu, gContext.surface),
+            .ImageCount = Util::GetSwapchainImageCount(gContext.gpu, gContext.surface),
+            .MSAASamples = VK_SAMPLE_COUNT_1_BIT,
+            .DescriptorPoolSize = 1000,
+            .UseDynamicRendering = true,
+            .PipelineRenderingCreateInfo{
+                .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
+                .colorAttachmentCount = 1,
+                .pColorAttachmentFormats = &format,
+                .depthAttachmentFormat = VK_FORMAT_D32_SFLOAT,
+            }};
+        ImGui_ImplVulkan_Init(&vulkanInitInfo);
+        ImGui_ImplVulkan_CreateFontsTexture();
+    }
 }
 
 void Swift::Shutdown()
 {
     const auto result = gContext.device.waitIdle();
     VK_ASSERT(result, "Failed to wait for device while cleaning up");
+
+    if (gInitInfo.enableImGui)
+    {
+        ImGui_ImplVulkan_Shutdown();
+        ImGui_ImplGlfw_Shutdown();
+        ImGui::DestroyContext();
+    }
+    
     for (const auto& frameData : gFrameData)
     {
         frameData.Destroy(gContext);
     }
-
     gDescriptor.Destroy(gContext);
 
     for (const auto& [shaders, stageFlags, pipelineLayout] : gShaders)
@@ -171,6 +215,13 @@ void Swift::BeginFrame(const DynamicInfo& dynamicInfo)
 
     Util::WaitFence(gContext, renderFence, 1000000000);
 
+    if (gInitInfo.enableImGui)
+    {
+        ImGui_ImplVulkan_NewFrame();
+        ImGui_ImplGlfw_NewFrame();
+        ImGui::NewFrame();
+    }
+    
     gSwapchain.imageIndex = Render::AcquireNextImage(
         gGraphicsQueue,
         gContext,
@@ -236,25 +287,40 @@ void Swift::EndFrame(const DynamicInfo& dynamicInfo)
         Util::To2D(dynamicInfo.extent));
 
     gCurrentFrame = (gCurrentFrame + 1) % gSwapchain.images.size();
+    ImGui::EndFrame();
 }
 
 void Swift::BeginRendering()
 {
     const auto& commandBuffer = Render::GetCommandBuffer(gFrameData, gCurrentFrame);
-    Render::BeginRendering(commandBuffer, gSwapchain);
+    Render::BeginRendering(commandBuffer, gSwapchain, true);
     Render::DefaultRenderConfig(commandBuffer, gSwapchain.extent, gContext.dynamicLoader);
-
-    VmaBudget budgets[VK_MAX_MEMORY_HEAPS];
-    vmaGetHeapBudgets(gContext.allocator, budgets);
-    printf("Vulkan reports total usage %f GB with budget %f GB.\n",
-    static_cast<float>(budgets[0].statistics.allocationBytes) / (1024.f * 1024.f * 1024.f),
-    static_cast<float>(budgets[0].budget) / (1024.f * 1024.f * 1024.f));
 }
 
 void Swift::EndRendering()
 {
     const auto& commandBuffer = Render::GetCommandBuffer(gFrameData, gCurrentFrame);
     commandBuffer.endRendering();
+
+    Render::BeginRendering(commandBuffer, gSwapchain, false);
+    if (gInitInfo.enableImGui)
+    {
+        ImGui::Render();
+        ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), commandBuffer);
+    }
+    commandBuffer.endRendering();
+}
+
+void Swift::ShowDebugStats()
+{
+    VmaBudget budgets[VK_MAX_MEMORY_HEAPS];
+    vmaGetHeapBudgets(gContext.allocator, budgets);
+    ImGui::Begin("Debug Statistics");
+    ImGui::Text("Memory Usage: %f GB", budgets[0].statistics.allocationBytes / (1024.0f * 1024.0f * 1024.0f));
+    ImGui::Text("Memory Allocated: %f GB", budgets[0].usage / (1024.0f * 1024.0f * 1024.0f));
+    ImGui::Text("Available GPU Memory: %f GB", budgets[0].budget / (1024.0f * 1024.0f * 1024.0f));
+    ImGui::Text("FPS: %f", ImGui::GetIO().Framerate);
+    ImGui::End();
 }
 
 ShaderObject Swift::CreateGraphicsShaderObject(
@@ -469,7 +535,7 @@ ImageObject Swift::CreateImageFromFile(
             vk::ImageLayout::eTransferDstOptimal,
             image,
             vk::ImageAspectFlagBits::eColor,
-            loadAllMipMaps ? ddsImage.numMips: 1);
+            loadAllMipMaps ? ddsImage.numMips : 1);
         Util::PipelineBarrier(gTransferCommand, imageBarrier);
         const auto buffer = Util::UploadToImage(
             gContext,
@@ -601,6 +667,30 @@ void Swift::BindIndexBuffer(const BufferObject& bufferObject)
     commandBuffer.bindIndexBuffer(realBuffer, 0, vk::IndexType::eUint32);
 }
 
+void Swift::ClearImage(
+    const ImageObject image,
+    const glm::vec4 color)
+{
+    const auto& commandBuffer = Render::GetCommandBuffer(gFrameData, gCurrentFrame);
+    auto& realImage = Util::GetRealImage(image, gSamplerImages, gWriteableImages);
+    const auto generalBarrier = Util::ImageBarrier(
+        vk::ImageLayout::eUndefined,
+        vk::ImageLayout::eGeneral,
+        realImage,
+        vk::ImageAspectFlagBits::eColor);
+    Util::PipelineBarrier(commandBuffer, generalBarrier);
+
+    const auto clearColor = vk::ClearColorValue(color.x, color.y, color.z, color.w);
+    Util::ClearColorImage(commandBuffer, realImage, clearColor);
+
+    const auto colorBarrier = Util::ImageBarrier(
+        vk::ImageLayout::eGeneral,
+        vk::ImageLayout::eColorAttachmentOptimal,
+        realImage,
+        vk::ImageAspectFlagBits::eColor);
+    Util::PipelineBarrier(commandBuffer, colorBarrier);
+}
+
 void Swift::ClearSwapchainImage(const glm::vec4 color)
 {
     const auto& commandBuffer = Render::GetCommandBuffer(gFrameData, gCurrentFrame);
@@ -630,8 +720,8 @@ void Swift::CopyImage(
     const auto& commandBuffer = Render::GetCommandBuffer(gFrameData, gCurrentFrame);
     constexpr auto srcLayout = vk::ImageLayout::eTransferSrcOptimal;
     constexpr auto dstLayout = vk::ImageLayout::eTransferDstOptimal;
-    auto& srcImage = gWriteableImages.at(srcImageObject.index);
-    auto& dstImage = gWriteableImages.at(dstImageObject.index);
+    auto& srcImage = Util::GetRealImage(srcImageObject, gSamplerImages, gWriteableImages);
+    auto& dstImage = Util::GetRealImage(dstImageObject, gSamplerImages, gWriteableImages);
     const auto srcBarrier = Util::ImageBarrier(
         srcImage.currentLayout,
         srcLayout,
@@ -647,13 +737,14 @@ void Swift::CopyImage(
 }
 
 void Swift::CopyToSwapchain(
-    ImageObject srcImageObject,
-    glm::uvec2 extent)
+    const ImageObject srcImageObject,
+    const glm::uvec2 extent)
 {
     const auto& commandBuffer = Render::GetCommandBuffer(gFrameData, gCurrentFrame);
     constexpr auto srcLayout = vk::ImageLayout::eTransferSrcOptimal;
     constexpr auto dstLayout = vk::ImageLayout::eTransferDstOptimal;
-    auto& srcImage = gWriteableImages.at(srcImageObject.index);
+    auto& srcImage = Util::GetRealImage(srcImageObject, gSamplerImages, gWriteableImages);
+    ;
     auto& dstImage = gSwapchain.renderImage;
     const auto srcBarrier = Util::ImageBarrier(
         srcImage.currentLayout,
@@ -679,8 +770,10 @@ void Swift::BlitImage(
     constexpr auto srcLayout = vk::ImageLayout::eTransferSrcOptimal;
     constexpr auto dstLayout = vk::ImageLayout::eTransferDstOptimal;
 
-    auto& srcImage = gWriteableImages.at(srcImageObject.index);
-    auto& dstImage = gWriteableImages.at(dstImageObject.index);
+    auto& srcImage = Util::GetRealImage(srcImageObject, gSamplerImages, gWriteableImages);
+    ;
+    auto& dstImage = Util::GetRealImage(dstImageObject, gSamplerImages, gWriteableImages);
+    ;
     const auto srcBarrier = Util::ImageBarrier(
         srcImage.currentLayout,
         srcLayout,
@@ -710,7 +803,7 @@ void Swift::BlitToSwapchain(
     constexpr auto srcLayout = vk::ImageLayout::eTransferSrcOptimal;
     constexpr auto dstLayout = vk::ImageLayout::eTransferDstOptimal;
 
-    auto& srcImage = gWriteableImages.at(srcImageObject.index);
+    auto& srcImage = Util::GetRealImage(srcImageObject, gSamplerImages, gWriteableImages);
     auto& dstImage = gSwapchain.renderImage;
     const auto srcBarrier = Util::ImageBarrier(
         srcImage.currentLayout,

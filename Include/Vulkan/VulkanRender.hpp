@@ -64,7 +64,8 @@ namespace Swift::Vulkan::Render
 
     inline void BeginRendering(
         const vk::CommandBuffer commandBuffer,
-        const Swapchain& swapchain)
+        const Swapchain& swapchain,
+        bool enableDepth)
     {
         const auto colorAttachment = vk::RenderingAttachmentInfo()
                                          .setImageView(swapchain.renderImage.imageView)
@@ -80,7 +81,7 @@ namespace Swift::Vulkan::Render
                                          .setStoreOp(vk::AttachmentStoreOp::eStore);
         const auto renderingInfo = vk::RenderingInfo()
                                        .setColorAttachments(colorAttachment)
-                                       .setPDepthAttachment(&depthAttachment)
+                                       .setPDepthAttachment(enableDepth ? &depthAttachment : nullptr)
                                        .setLayerCount(1)
                                        .setRenderArea(vk::Rect2D().setExtent(swapchain.extent));
         commandBuffer.beginRendering(renderingInfo);

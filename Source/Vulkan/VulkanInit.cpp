@@ -78,15 +78,6 @@ namespace
         return modes[0];
     }
 
-    u32 ChooseSwapchainImageCount(
-        const vk::PhysicalDevice gpu,
-        const vk::SurfaceKHR surface)
-    {
-        const auto [result, capabilities] = gpu.getSurfaceCapabilitiesKHR(surface);
-        VK_ASSERT(result, "Failed to get surface capabilities");
-        return capabilities.minImageCount + 1;
-    }
-
     vk::SurfaceTransformFlagBitsKHR ChooseSwapchainPreTransform(
         const vk::PhysicalDevice gpu,
         const vk::SurfaceKHR surface)
@@ -352,7 +343,7 @@ namespace Swift::Vulkan
                 .setPresentMode(ChooseSwapchainPresentMode(gpu, surface))
                 .setImageFormat(format)
                 .setImageColorSpace(colorSpace)
-                .setMinImageCount(ChooseSwapchainImageCount(gpu, surface))
+                .setMinImageCount(Util::GetSwapchainImageCount(gpu, surface))
                 .setImageExtent(extent)
                 .setImageArrayLayers(1)
                 .setImageUsage(
@@ -613,28 +604,24 @@ namespace Swift::Vulkan
         const vk::Instance instance,
         const vk::Device device)
     {
-        return {
-            instance,
-            vkGetInstanceProcAddr,
-            device,
-            vkGetDeviceProcAddr};
+        return {instance, vkGetInstanceProcAddr, device, vkGetDeviceProcAddr};
     }
-    
+
     vk::Sampler Init::CreateSampler(const vk::Device device)
     {
         constexpr auto samplerCreateInfo = vk::SamplerCreateInfo()
-                                       .setMagFilter(vk::Filter::eLinear)
-                                       .setMinFilter(vk::Filter::eLinear)
-                                       .setAddressModeU(vk::SamplerAddressMode::eRepeat)
-                                       .setAddressModeV(vk::SamplerAddressMode::eRepeat)
-                                       .setAddressModeW(vk::SamplerAddressMode::eRepeat)
-                                       .setBorderColor(vk::BorderColor::eIntOpaqueBlack)
-                                       .setUnnormalizedCoordinates(false)
-                                       .setCompareOp(vk::CompareOp::eAlways)
-                                       .setCompareEnable(false)
-                                       .setMipmapMode(vk::SamplerMipmapMode::eLinear)
-                                       .setMinLod(0)
-                                       .setMaxLod(50);
+                                               .setMagFilter(vk::Filter::eLinear)
+                                               .setMinFilter(vk::Filter::eLinear)
+                                               .setAddressModeU(vk::SamplerAddressMode::eRepeat)
+                                               .setAddressModeV(vk::SamplerAddressMode::eRepeat)
+                                               .setAddressModeW(vk::SamplerAddressMode::eRepeat)
+                                               .setBorderColor(vk::BorderColor::eIntOpaqueBlack)
+                                               .setUnnormalizedCoordinates(false)
+                                               .setCompareOp(vk::CompareOp::eAlways)
+                                               .setCompareEnable(false)
+                                               .setMipmapMode(vk::SamplerMipmapMode::eLinear)
+                                               .setMinLod(0)
+                                               .setMaxLod(50);
         const auto [result, sampler] = device.createSampler(samplerCreateInfo);
         VK_ASSERT(result, "Failed to create sampler!");
         return sampler;
@@ -680,21 +667,32 @@ namespace Swift::Vulkan
         return layout;
     }
 
-    vk::DescriptorPool Init::CreateDescriptorPool(const vk::Device device)
+    vk::DescriptorPool Init::CreateDescriptorPool(
+        const vk::Device device,
+        std::span<vk::DescriptorPoolSize> poolSizes)
     {
-        constexpr std::array poolSizes{
-            vk::DescriptorPoolSize()
-                .setDescriptorCount(Constants::MaxUniformDescriptors)
-                .setType(vk::DescriptorType::eUniformBuffer),
-            vk::DescriptorPoolSize()
-                .setDescriptorCount(Constants::MaxStorageDescriptors)
-                .setType(vk::DescriptorType::eStorageBuffer),
-            vk::DescriptorPoolSize()
-                .setDescriptorCount(Constants::MaxSamplerDescriptors)
-                .setType(vk::DescriptorType::eSampler),
-            vk::DescriptorPoolSize()
-                .setDescriptorCount(Constants::MaxImageDescriptors)
-                .setType(vk::DescriptorType::eStorageImage)};
+        if (poolSizes.empty())
+        {
+            constexpr std::array poolSizes{
+                vk::DescriptorPoolSize()
+                    .setDescriptorCount(Constants::MaxUniformDescriptors)
+                    .setType(vk::DescriptorType::eUniformBuffer),
+                vk::DescriptorPoolSize()
+                    .setDescriptorCount(Constants::MaxStorageDescriptors)
+                    .setType(vk::DescriptorType::eStorageBuffer),
+                vk::DescriptorPoolSize()
+                    .setDescriptorCount(Constants::MaxSamplerDescriptors)
+                    .setType(vk::DescriptorType::eSampler),
+                vk::DescriptorPoolSize()
+                    .setDescriptorCount(Constants::MaxImageDescriptors)
+                    .setType(vk::DescriptorType::eStorageImage)};
+            const auto createInfo =
+                vk::DescriptorPoolCreateInfo().setMaxSets(1).setPoolSizes(poolSizes).setFlags(
+                    vk::DescriptorPoolCreateFlagBits::eUpdateAfterBind);
+            auto [result, descriptorPool] = device.createDescriptorPool(createInfo);
+            VK_ASSERT(result, "Failed to create descriptor pool");
+            return descriptorPool;
+        }
         const auto createInfo =
             vk::DescriptorPoolCreateInfo().setMaxSets(1).setPoolSizes(poolSizes).setFlags(
                 vk::DescriptorPoolCreateFlagBits::eUpdateAfterBind);

@@ -11,6 +11,7 @@ namespace Swift
         std::string engineName{};
         glm::uvec2 extent{};
         HWND hwnd{};
+        bool enableImGui{};
 
         InitInfo& SetAppName(const std::string_view appName)
         {
@@ -30,6 +31,11 @@ namespace Swift
         InitInfo& SetHwnd(const HWND hwnd)
         {
             this->hwnd = hwnd;
+            return *this;
+        }
+        InitInfo& SetEnableImGui(const bool enableImGui)
+        {
+            this->enableImGui = enableImGui;
             return *this;
         }
     };

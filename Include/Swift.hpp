@@ -12,6 +12,8 @@ namespace Swift
     void BeginRendering();
     void EndRendering();
 
+    void ShowDebugStats();
+
     void Draw(
         u32 vertexCount,
         u32 instanceCount,
@@ -61,6 +63,7 @@ namespace Swift
     u64 GetBufferAddress(const BufferObject& buffer);
     void BindIndexBuffer(const BufferObject& bufferObject);
 
+    void ClearImage(ImageObject image, glm::vec4 color);
     void ClearSwapchainImage(glm::vec4 color);
     void CopyImage(
         ImageObject srcImageObject,
