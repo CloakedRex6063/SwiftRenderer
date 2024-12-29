@@ -12,6 +12,8 @@ namespace Swift
     void BeginRendering();
     void EndRendering();
 
+    void ShowDebugStats();
+
     void Draw(
         u32 vertexCount,
         u32 instanceCount,
@@ -27,10 +29,12 @@ namespace Swift
     ShaderObject CreateGraphicsShaderObject(
         std::string_view vertexPath,
         std::string_view fragmentPath,
+        std::string_view debugName,
         u32 pushConstantSize = 0);
     ShaderObject CreateComputeShaderObject(
         const std::string& computePath,
-        u32 pushConstantSize = 0);
+        u32 pushConstantSize,
+        std::string_view debugName);
     void BindShader(const ShaderObject& shaderObject);
 
     ImageObject CreateWriteableImage(glm::uvec2 size);
@@ -57,10 +61,13 @@ namespace Swift
         const void* data,
         u64 offset,
         u64 size);
-    
+
     u64 GetBufferAddress(const BufferObject& buffer);
     void BindIndexBuffer(const BufferObject& bufferObject);
 
+    void ClearImage(
+        ImageObject image,
+        glm::vec4 color);
     void ClearSwapchainImage(glm::vec4 color);
     void CopyImage(
         ImageObject srcImageObject,

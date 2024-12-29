@@ -20,69 +20,62 @@ namespace Swift::Vulkan::Render
     void DefaultRenderConfig(
         vk::CommandBuffer commandBuffer,
         vk::Extent2D extent,
-        const vk::DispatchLoaderDynamic& dynamicLoader);
+        const vk::DispatchLoaderDynamic& dynamicLoader,
+        bool bUsePipeline);
 
     inline Image& GetSwapchainImage(Swapchain& swapchain)
     {
         return swapchain.images[swapchain.imageIndex];
     }
 
-    inline vk::Semaphore& GetRenderSemaphore(
-        const std::span<FrameData> frameData,
-        const u32 frameIndex)
+    inline vk::Semaphore& GetRenderSemaphore(FrameData& frameData)
     {
-        return frameData[frameIndex].renderSemaphore;
+        return frameData.renderSemaphore;
     }
 
-    inline vk::Semaphore& GetPresentSemaphore(
-        const std::span<FrameData> frameData,
-        const u32 frameIndex)
+    inline vk::Semaphore& GetPresentSemaphore(FrameData& frameData)
     {
-        return frameData[frameIndex].presentSemaphore;
+        return frameData.presentSemaphore;
     }
 
-    inline vk::Fence& GetRenderFence(
-        const std::span<FrameData> frameData,
-        const u32 frameIndex)
+    inline vk::Fence& GetRenderFence(FrameData& frameData)
     {
-        return frameData[frameIndex].renderFence;
+        return frameData.renderFence;
     }
 
-    inline vk::CommandBuffer& GetCommandBuffer(
-        const std::span<FrameData> frameData,
-        const u32 frameIndex)
+    inline vk::CommandBuffer& GetCommandBuffer(FrameData& frameData)
     {
-        return frameData[frameIndex].renderCommand.commandBuffer;
+        return frameData.renderCommand.commandBuffer;
     }
 
-    inline vk::CommandPool& GetCommandPool(
-        const std::span<FrameData>& frameData,
-        const u32 frameIndex)
+    inline vk::CommandPool& GetCommandPool(FrameData& frameData)
     {
-        return frameData[frameIndex].renderCommand.commandPool;
+        return frameData.renderCommand.commandPool;
     }
 
     inline void BeginRendering(
         const vk::CommandBuffer commandBuffer,
-        const Swapchain& swapchain)
+        const Swapchain& swapchain,
+        const bool enableDepth)
     {
         const auto colorAttachment = vk::RenderingAttachmentInfo()
                                          .setImageView(swapchain.renderImage.imageView)
-                                         .setClearValue(vk::ClearColorValue({0, 0, 0, 0}))
+                                         .setClearValue(vk::ClearColorValue().setFloat32({0.f}))
                                          .setImageLayout(vk::ImageLayout::eColorAttachmentOptimal)
                                          .setLoadOp(vk::AttachmentLoadOp::eLoad)
                                          .setStoreOp(vk::AttachmentStoreOp::eStore);
         const auto depthAttachment = vk::RenderingAttachmentInfo()
                                          .setImageView(swapchain.depthImage.imageView)
-                                         .setClearValue(vk::ClearColorValue({0, 0, 0, 0}))
+                                         .setClearValue(vk::ClearColorValue().setFloat32({0.f}))
                                          .setImageLayout(vk::ImageLayout::eDepthAttachmentOptimal)
                                          .setLoadOp(vk::AttachmentLoadOp::eClear)
                                          .setStoreOp(vk::AttachmentStoreOp::eStore);
-        const auto renderingInfo = vk::RenderingInfo()
-                                       .setColorAttachments(colorAttachment)
-                                       .setPDepthAttachment(&depthAttachment)
-                                       .setLayerCount(1)
-                                       .setRenderArea(vk::Rect2D().setExtent(swapchain.extent));
+        const auto renderingInfo =
+            vk::RenderingInfo()
+                .setColorAttachments(colorAttachment)
+                .setPDepthAttachment(enableDepth ? &depthAttachment : nullptr)
+                .setLayerCount(1)
+                .setRenderArea(vk::Rect2D().setExtent(swapchain.extent));
         commandBuffer.beginRendering(renderingInfo);
     }
 

@@ -268,6 +268,7 @@ namespace Swift::Vulkan
     {
         std::vector<vk::ShaderEXT> shaders;
         std::vector<vk::ShaderStageFlagBits> stage;
+        vk::Pipeline pipeline;
         vk::PipelineLayout pipelineLayout;
 
         Shader& SetShaders(const std::vector<vk::ShaderEXT>& shaders)
@@ -275,17 +276,30 @@ namespace Swift::Vulkan
             this->shaders = shaders;
             return *this;
         }
-
+        Shader& SetPipeline(const vk::Pipeline& pipeline)
+        {
+            this->pipeline = pipeline;
+            return *this;
+        }
         Shader& SetPipelineLayout(const vk::PipelineLayout& pipelineLayout)
         {
             this->pipelineLayout = pipelineLayout;
             return *this;
         }
-
         Shader& SetStageFlags(const std::vector<vk::ShaderStageFlagBits>& stage)
         {
             this->stage = stage;
             return *this;
+        }
+
+        void Destroy(const Context& context) const
+        {
+            for (const auto& shader : shaders)
+            {
+                context.device.destroy(shader, nullptr, context.dynamicLoader);
+            }
+            context.device.destroy(pipeline, nullptr, context.dynamicLoader);
+            context.device.destroy(pipelineLayout);
         }
     };
 } // namespace Swift::Vulkan
