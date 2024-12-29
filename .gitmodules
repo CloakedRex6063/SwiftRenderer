@@ -7,3 +7,7 @@
 [submodule "External/DDS"]
 	path = External/DDS
 	url = https://github.com/spnda/dds_image
+[submodule "External/ImGui"]
+	path = External/ImGui
+	url = https://github.com/ocornut/imgui
+	branch = docking

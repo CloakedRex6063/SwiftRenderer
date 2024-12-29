@@ -1,8 +1,6 @@
 #pragma once
 #include "SwiftEnums.hpp"
 
-#include <Vulkan/VulkanStructs.hpp>
-
 namespace Swift
 {
     struct InitInfo
@@ -16,8 +14,6 @@ namespace Swift
         // Native window handle. Mandatory
         // TODO: use std::variant to allow for linux support
         HWND hwnd{};
-        // Enable imgui support. Optional
-        bool enableImGui{};
         // Use for wider support of GPUs and possibly better performance. Optional
         bool bUsePipelines{};
 
@@ -39,11 +35,6 @@ namespace Swift
         InitInfo& SetHwnd(const HWND hwnd)
         {
             this->hwnd = hwnd;
-            return *this;
-        }
-        InitInfo& SetEnableImGui(const bool enableImGui)
-        {
-            this->enableImGui = enableImGui;
             return *this;
         }
         InitInfo& SetUsePipelines(const bool usePipelines)

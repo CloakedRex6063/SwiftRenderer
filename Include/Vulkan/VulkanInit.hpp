@@ -88,7 +88,9 @@ namespace Swift::Vulkan::Init
     vk::Sampler CreateSampler(vk::Device device);
 
     vk::DescriptorSetLayout CreateDescriptorSetLayout(vk::Device device);
-    vk::DescriptorPool CreateDescriptorPool(vk::Device device);
+    vk::DescriptorPool CreateDescriptorPool(
+        vk::Device device,
+        std::span<vk::DescriptorPoolSize> poolSizes);
     vk::DescriptorSet CreateDescriptorSet(
         vk::Device device,
         vk::DescriptorPool descriptorPool,

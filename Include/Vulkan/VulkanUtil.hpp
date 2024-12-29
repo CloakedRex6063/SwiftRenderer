@@ -1,6 +1,10 @@
 #pragma once
 #include "VulkanStructs.hpp"
 
+namespace Swift
+{
+    struct ImageObject;
+}
 namespace Swift::Vulkan
 {
     struct Context;
@@ -14,6 +18,20 @@ namespace Swift::Vulkan::Util
     vk::Extent3D GetMipExtent(
         vk::Extent3D extent,
         u32 mipLevel);
+
+    Image& GetRealImage(
+        ImageObject image,
+        std::vector<Image>& readImages,
+        std::vector<Image>& writeImages);
+
+    inline u32 GetSwapchainImageCount(
+    const vk::PhysicalDevice gpu,
+    const vk::SurfaceKHR surface)
+    {
+        const auto [result, capabilities] = gpu.getSurfaceCapabilitiesKHR(surface);
+        VK_ASSERT(result, "Failed to get surface capabilities");
+        return capabilities.minImageCount + 1;
+    }
 
     void HandleSubOptimalSwapchain(
         u32 graphicsFamily,

@@ -1,9 +1,8 @@
 #include "Vulkan/VulkanUtil.hpp"
 #include "Vulkan/VulkanInit.hpp"
-#include "Vulkan/VulkanStructs.hpp"
-
-#include <Vulkan/VulkanConstants.hpp>
-#include <set>
+#include "Vulkan/VulkanStructs.hpp" 
+#include "SwiftStructs.hpp"
+#include "Vulkan/VulkanConstants.hpp" 
 
 namespace Swift::Vulkan
 {
@@ -51,6 +50,21 @@ namespace Swift::Vulkan
         u32 mipHeight = std::max(extent.height >> mipLevel, 1u);
         u32 mipDepth = std::max(extent.depth >> mipLevel, 1u);
         return {mipWidth, mipHeight, mipDepth};
+    }
+
+    Image& Util::GetRealImage(
+        const ImageObject image,
+        std::vector<Image>& readImages,
+        std::vector<Image>& writeImages)
+    {
+        switch (image.type)
+        {
+        case ImageType::eReadWrite:
+            return writeImages[image.index];
+        case ImageType::eReadOnly:
+            return readImages[image.index];
+        }
+        return readImages[image.index];
     }
 
     void Util::HandleSubOptimalSwapchain(

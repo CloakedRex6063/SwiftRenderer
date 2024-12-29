@@ -1,13 +1,16 @@
 #include "Swift.hpp"
-#include "Utils/FileIO.hpp"
 #include "Vulkan/VulkanInit.hpp"
 #include "Vulkan/VulkanRender.hpp"
 #include "Vulkan/VulkanStructs.hpp"
 #include "Vulkan/VulkanUtil.hpp"
 #include "dds.hpp"
+#ifdef SWIFT_IMGUI
 #include "imgui.h"
-#include "imgui_impl_glfw.h"
 #include "imgui_impl_vulkan.h"
+#endif
+#ifdef SWIFT_IMGUI_GLFW
+#include "imgui_impl_glfw.h"
+#endif
 
 #define VMA_IMPLEMENTATION
 #include "vk_mem_alloc.h"
@@ -121,35 +124,34 @@ void Swift::Init(const InitInfo& initInfo)
         "Transfer Command Buffer");
     gTransferFence = Init::CreateFence(gContext, {}, "Transfer Fence");
 
-    if (initInfo.enableImGui)
-    {
-        IMGUI_CHECKVERSION();
-        ImGui::CreateContext();
-        ImGuiIO& io = ImGui::GetIO();
-        io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-        io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
-        io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
-        auto format = VK_FORMAT_R16G16B16A16_SFLOAT;
-        ImGui_ImplVulkan_InitInfo vulkanInitInfo{
-            .Instance = gContext.instance,
-            .PhysicalDevice = gContext.gpu,
-            .Device = gContext.device,
-            .QueueFamily = gGraphicsQueue.index,
-            .Queue = gGraphicsQueue.queue,
-            .MinImageCount = Util::GetSwapchainImageCount(gContext.gpu, gContext.surface),
-            .ImageCount = Util::GetSwapchainImageCount(gContext.gpu, gContext.surface),
-            .MSAASamples = VK_SAMPLE_COUNT_1_BIT,
-            .DescriptorPoolSize = 1000,
-            .UseDynamicRendering = true,
-            .PipelineRenderingCreateInfo{
-                .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
-                .colorAttachmentCount = 1,
-                .pColorAttachmentFormats = &format,
-                .depthAttachmentFormat = VK_FORMAT_D32_SFLOAT,
-            }};
-        ImGui_ImplVulkan_Init(&vulkanInitInfo);
-        ImGui_ImplVulkan_CreateFontsTexture();
-    }
+#ifdef SWIFT_IMGUI
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGuiIO& io = ImGui::GetIO();
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
+    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+    auto format = VK_FORMAT_R16G16B16A16_SFLOAT;
+    ImGui_ImplVulkan_InitInfo vulkanInitInfo{
+        .Instance = gContext.instance,
+        .PhysicalDevice = gContext.gpu,
+        .Device = gContext.device,
+        .QueueFamily = gGraphicsQueue.index,
+        .Queue = gGraphicsQueue.queue,
+        .MinImageCount = Util::GetSwapchainImageCount(gContext.gpu, gContext.surface),
+        .ImageCount = Util::GetSwapchainImageCount(gContext.gpu, gContext.surface),
+        .MSAASamples = VK_SAMPLE_COUNT_1_BIT,
+        .DescriptorPoolSize = 1000,
+        .UseDynamicRendering = true,
+        .PipelineRenderingCreateInfo{
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
+            .colorAttachmentCount = 1,
+            .pColorAttachmentFormats = &format,
+            .depthAttachmentFormat = VK_FORMAT_D32_SFLOAT,
+        }};
+    ImGui_ImplVulkan_Init(&vulkanInitInfo);
+    ImGui_ImplVulkan_CreateFontsTexture();
+#endif
 }
 
 void Swift::Shutdown()
@@ -157,12 +159,13 @@ void Swift::Shutdown()
     const auto result = gContext.device.waitIdle();
     VK_ASSERT(result, "Failed to wait for device while cleaning up");
 
-    if (gInitInfo.enableImGui)
-    {
-        ImGui_ImplVulkan_Shutdown();
-        ImGui_ImplGlfw_Shutdown();
-        ImGui::DestroyContext();
-    }
+#ifdef SWIFT_IMGUI
+    ImGui_ImplVulkan_Shutdown();
+#ifdef SWIFT_IMGUI_GLFW
+    ImGui_ImplGlfw_Shutdown();
+#endif
+    ImGui::DestroyContext();
+#endif
 
     for (const auto& frameData : gFrameData)
     {
@@ -206,12 +209,11 @@ void Swift::BeginFrame(const DynamicInfo& dynamicInfo)
 
     Util::WaitFence(gContext, renderFence, 1000000000);
 
-    if (gInitInfo.enableImGui)
-    {
-        ImGui_ImplVulkan_NewFrame();
-        ImGui_ImplGlfw_NewFrame();
-        ImGui::NewFrame();
-    }
+#ifdef SWIFT_IMGUI
+    ImGui_ImplVulkan_NewFrame();
+    ImGui_ImplGlfw_NewFrame();
+    ImGui::NewFrame();
+#endif
 
     gSwapchain.imageIndex = Render::AcquireNextImage(
         gGraphicsQueue,
@@ -298,11 +300,10 @@ void Swift::EndRendering()
     commandBuffer.endRendering();
 
     Render::BeginRendering(commandBuffer, gSwapchain, false);
-    if (gInitInfo.enableImGui)
-    {
-        ImGui::Render();
-        ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), commandBuffer);
-    }
+#ifdef SWIFT_IMGUI
+    ImGui::Render();
+    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), commandBuffer);
+#endif
     commandBuffer.endRendering();
 }
 
