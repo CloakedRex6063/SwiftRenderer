@@ -34,6 +34,7 @@ namespace
     std::vector<Vulkan::Image> gSamplerImages;
     std::vector<Vulkan::FrameData> gFrameData;
     u32 gCurrentFrame = 0;
+    Vulkan::FrameData gCurrentFrameData;
 
     InitInfo gInitInfo;
 } // namespace
@@ -43,13 +44,8 @@ using namespace Vulkan;
 void Swift::Init(const InitInfo& initInfo)
 {
     gInitInfo = initInfo;
-    
-    gContext.SetInstance(Init::CreateInstance(initInfo.appName, initInfo.engineName))
-        .SetSurface(Init::CreateSurface(gContext.instance, initInfo.hwnd))
-        .SetGPU(Init::ChooseGPU(gContext.instance, gContext.surface))
-        .SetDevice(Init::CreateDevice(gContext.gpu, gContext.surface))
-        .SetAllocator(Init::CreateAllocator(gContext))
-        .SetDynamicLoader(Init::CreateDynamicLoader(gContext.instance, gContext.device));
+
+    gContext = Init::CreateContext(initInfo);
 
     const auto indices = Util::GetQueueFamilyIndices(gContext.gpu, gContext.surface);
     const auto graphicsQueue = Init::GetQueue(gContext, indices[0], "Graphics Queue");
@@ -130,9 +126,9 @@ void Swift::Init(const InitInfo& initInfo)
         IMGUI_CHECKVERSION();
         ImGui::CreateContext();
         ImGuiIO& io = ImGui::GetIO();
-        io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;  
-        io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;     
-        io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;  
+        io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+        io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
+        io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
         auto format = VK_FORMAT_R16G16B16A16_SFLOAT;
         ImGui_ImplVulkan_InitInfo vulkanInitInfo{
             .Instance = gContext.instance,
@@ -167,20 +163,16 @@ void Swift::Shutdown()
         ImGui_ImplGlfw_Shutdown();
         ImGui::DestroyContext();
     }
-    
+
     for (const auto& frameData : gFrameData)
     {
         frameData.Destroy(gContext);
     }
     gDescriptor.Destroy(gContext);
 
-    for (const auto& [shaders, stageFlags, pipelineLayout] : gShaders)
+    for (const auto& shader : gShaders)
     {
-        for (const auto& shader : shaders)
-        {
-            gContext.device.destroy(shader, nullptr, gContext.dynamicLoader);
-        }
-        gContext.device.destroy(pipelineLayout);
+        shader.Destroy(gContext);
     }
 
     for (auto& image : gWriteableImages)
@@ -200,7 +192,6 @@ void Swift::Shutdown()
 
     gTransferCommand.Destroy(gContext);
     gContext.device.destroy(gTransferFence);
-
     gContext.device.destroy(gLinearSampler);
 
     gSwapchain.Destroy(gContext);
@@ -209,9 +200,9 @@ void Swift::Shutdown()
 
 void Swift::BeginFrame(const DynamicInfo& dynamicInfo)
 {
-    const auto& commandBuffer = Render::GetCommandBuffer(gFrameData, gCurrentFrame);
-    const auto& renderSemaphore = Render::GetRenderSemaphore(gFrameData, gCurrentFrame);
-    const auto& renderFence = Render::GetRenderFence(gFrameData, gCurrentFrame);
+    gCurrentFrameData = gFrameData[gCurrentFrame];
+    const auto& commandBuffer = Render::GetCommandBuffer(gCurrentFrameData);
+    const auto& renderFence = Render::GetRenderFence(gCurrentFrameData);
 
     Util::WaitFence(gContext, renderFence, 1000000000);
 
@@ -221,12 +212,12 @@ void Swift::BeginFrame(const DynamicInfo& dynamicInfo)
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
     }
-    
+
     gSwapchain.imageIndex = Render::AcquireNextImage(
         gGraphicsQueue,
         gContext,
         gSwapchain,
-        renderSemaphore,
+        gCurrentFrameData.renderSemaphore,
         Util::To2D(dynamicInfo.extent));
     Util::ResetFence(gContext, renderFence);
     Util::BeginOneTimeCommand(commandBuffer);
@@ -234,10 +225,10 @@ void Swift::BeginFrame(const DynamicInfo& dynamicInfo)
 
 void Swift::EndFrame(const DynamicInfo& dynamicInfo)
 {
-    const auto& commandBuffer = Render::GetCommandBuffer(gFrameData, gCurrentFrame);
-    const auto& renderSemaphore = Render::GetRenderSemaphore(gFrameData, gCurrentFrame);
-    const auto& presentSemaphore = Render::GetPresentSemaphore(gFrameData, gCurrentFrame);
-    const auto& renderFence = Render::GetRenderFence(gFrameData, gCurrentFrame);
+    const auto& commandBuffer = Render::GetCommandBuffer(gCurrentFrameData);
+    const auto& renderSemaphore = Render::GetRenderSemaphore(gCurrentFrameData);
+    const auto& presentSemaphore = Render::GetPresentSemaphore(gCurrentFrameData);
+    const auto& renderFence = Render::GetRenderFence(gCurrentFrameData);
     auto& swapchainImage = Render::GetSwapchainImage(gSwapchain);
 
     const auto copyRenderBarrier = Util::ImageBarrier(
@@ -292,14 +283,18 @@ void Swift::EndFrame(const DynamicInfo& dynamicInfo)
 
 void Swift::BeginRendering()
 {
-    const auto& commandBuffer = Render::GetCommandBuffer(gFrameData, gCurrentFrame);
+    const auto& commandBuffer = Render::GetCommandBuffer(gCurrentFrameData);
     Render::BeginRendering(commandBuffer, gSwapchain, true);
-    Render::DefaultRenderConfig(commandBuffer, gSwapchain.extent, gContext.dynamicLoader);
+    Render::DefaultRenderConfig(
+        commandBuffer,
+        gSwapchain.extent,
+        gContext.dynamicLoader,
+        gInitInfo.bUsePipelines);
 }
 
 void Swift::EndRendering()
 {
-    const auto& commandBuffer = Render::GetCommandBuffer(gFrameData, gCurrentFrame);
+    const auto& commandBuffer = Render::GetCommandBuffer(gCurrentFrameData);
     commandBuffer.endRendering();
 
     Render::BeginRendering(commandBuffer, gSwapchain, false);
@@ -316,7 +311,9 @@ void Swift::ShowDebugStats()
     VmaBudget budgets[VK_MAX_MEMORY_HEAPS];
     vmaGetHeapBudgets(gContext.allocator, budgets);
     ImGui::Begin("Debug Statistics");
-    ImGui::Text("Memory Usage: %f GB", budgets[0].statistics.allocationBytes / (1024.0f * 1024.0f * 1024.0f));
+    ImGui::Text(
+        "Memory Usage: %f GB",
+        budgets[0].statistics.allocationBytes / (1024.0f * 1024.0f * 1024.0f));
     ImGui::Text("Memory Allocated: %f GB", budgets[0].usage / (1024.0f * 1024.0f * 1024.0f));
     ImGui::Text("Available GPU Memory: %f GB", budgets[0].budget / (1024.0f * 1024.0f * 1024.0f));
     ImGui::Text("FPS: %f", ImGui::GetIO().Framerate);
@@ -326,110 +323,60 @@ void Swift::ShowDebugStats()
 ShaderObject Swift::CreateGraphicsShaderObject(
     const std::string_view vertexPath,
     const std::string_view fragmentPath,
+    const std::string_view debugName,
     const u32 pushConstantSize)
 {
-    const auto pushConstantRange = vk::PushConstantRange()
-                                       .setSize(pushConstantSize)
-                                       .setStageFlags(vk::ShaderStageFlagBits::eAllGraphics);
-
-    auto vertexCode = FileIO::ReadBinaryFile(vertexPath);
-    auto fragmentCode = FileIO::ReadBinaryFile(fragmentPath);
-    const std::array shaderCreateInfo{
-        Init::CreateShader(
-            vertexCode,
-            vk::ShaderStageFlagBits::eVertex,
-            gDescriptor.setLayout,
-            pushConstantRange,
-            vk::ShaderCreateFlagBitsEXT::eLinkStage,
-            vk::ShaderStageFlagBits::eFragment),
-        Init::CreateShader(
-            fragmentCode,
-            vk::ShaderStageFlagBits::eFragment,
-            gDescriptor.setLayout,
-            pushConstantRange,
-            vk::ShaderCreateFlagBitsEXT::eLinkStage),
-    };
-
-    auto [result, shaders] =
-        gContext.device.createShadersEXT(shaderCreateInfo, nullptr, gContext.dynamicLoader);
-    VK_ASSERT(result, "Failed to create shaders!");
-
-    auto layoutCreateInfo = vk::PipelineLayoutCreateInfo().setSetLayouts(gDescriptor.setLayout);
-
-    if (pushConstantSize > 0)
-    {
-        layoutCreateInfo.setPushConstantRanges(pushConstantRange);
-    }
-
-    // TODO: cache similar pipeline layouts
-    const auto [pipeResult, pipelineLayout] =
-        gContext.device.createPipelineLayout(layoutCreateInfo);
-    VK_ASSERT(pipeResult, "Failed to create pipeline layout for shader!");
-
-    constexpr auto stageFlags = {
-        vk::ShaderStageFlagBits::eVertex,
-        vk::ShaderStageFlagBits::eFragment};
-    gShaders.emplace_back(
-        Shader().SetShaders(shaders).SetPipelineLayout(pipelineLayout).SetStageFlags(stageFlags));
-
+    const auto shader = Init::CreateGraphicsShader(
+        gContext,
+        gDescriptor,
+        gInitInfo.bUsePipelines,
+        pushConstantSize,
+        vertexPath,
+        fragmentPath,
+        debugName);
+    gShaders.emplace_back(shader);
     const auto index = static_cast<u32>(gShaders.size() - 1);
-    const auto name = "Graphics Layout " + std::to_string(index);
-    Util::NameObject(pipelineLayout, name, gContext);
     return ShaderObject().SetIndex(index);
 }
 
 ShaderObject Swift::CreateComputeShaderObject(
     const std::string& computePath,
-    const u32 pushConstantSize)
+    const u32 pushConstantSize,
+    const std::string_view debugName)
 {
-    auto computeCode = FileIO::ReadBinaryFile(computePath);
-
-    const auto pushConstantRange = vk::PushConstantRange()
-                                       .setSize(pushConstantSize)
-                                       .setStageFlags(vk::ShaderStageFlagBits::eCompute);
-
-    const auto shaderCreateInfo = Init::CreateShader(
-        computeCode,
-        vk::ShaderStageFlagBits::eCompute,
-        gDescriptor.setLayout,
-        pushConstantRange);
-    auto [result, shader] =
-        gContext.device.createShaderEXT(shaderCreateInfo, nullptr, gContext.dynamicLoader);
-    VK_ASSERT(result, "Failed to create shaders!");
-
-    auto layoutCreateInfo = vk::PipelineLayoutCreateInfo().setSetLayouts(gDescriptor.setLayout);
-
-    if (pushConstantSize > 0)
-    {
-        layoutCreateInfo.setPushConstantRanges(pushConstantRange);
-    }
-
-    const auto [pipeResult, pipelineLayout] =
-        gContext.device.createPipelineLayout(layoutCreateInfo);
-    VK_ASSERT(pipeResult, "Failed to create pipeline layout for shader!");
-
-    gShaders.emplace_back(
-        Shader()
-            .SetShaders({shader})
-            .SetPipelineLayout(pipelineLayout)
-            .SetStageFlags({vk::ShaderStageFlagBits::eCompute}));
+    const auto shader = Init::CreateComputeShader(
+        gContext,
+        gDescriptor,
+        gInitInfo.bUsePipelines,
+        pushConstantSize,
+        computePath,
+        debugName);
+    gShaders.emplace_back(shader);
     const auto index = static_cast<u32>(gShaders.size() - 1);
-    const auto name = "Compute Layout " + std::to_string(index);
-    Util::NameObject(pipelineLayout, name, gContext);
     return ShaderObject().SetIndex(index);
 }
 
 void Swift::BindShader(const ShaderObject& shaderObject)
 {
-    const auto& commandBuffer = Render::GetCommandBuffer(gFrameData, gCurrentFrame);
-    const auto& [shaders, stageFlags, pipelineLayout] = gShaders.at(shaderObject.index);
-    commandBuffer.bindShadersEXT(stageFlags, shaders, gContext.dynamicLoader);
+    const auto& commandBuffer = Render::GetCommandBuffer(gCurrentFrameData);
+    const auto& [shaders, stageFlags, pipeline, pipelineLayout] = gShaders.at(shaderObject.index);
+
     const auto it = std::ranges::find(stageFlags, vk::ShaderStageFlagBits::eCompute);
     auto pipelineBindPoint = vk::PipelineBindPoint::eCompute;
     if (it == std::end(stageFlags))
     {
         pipelineBindPoint = vk::PipelineBindPoint::eGraphics;
     }
+
+    if (gInitInfo.bUsePipelines)
+    {
+        commandBuffer.bindPipeline(pipelineBindPoint, pipeline);
+    }
+    else
+    {
+        commandBuffer.bindShadersEXT(stageFlags, shaders, gContext.dynamicLoader);
+    }
+
     commandBuffer.bindDescriptorSets(pipelineBindPoint, pipelineLayout, 0, gDescriptor.set, {});
 
     gCurrentShader = shaderObject.index;
@@ -441,7 +388,7 @@ void Swift::Draw(
     const u32 firstVertex,
     const u32 firstInstance)
 {
-    const auto& commandBuffer = Render::GetCommandBuffer(gFrameData, gCurrentFrame);
+    const auto& commandBuffer = Render::GetCommandBuffer(gCurrentFrameData);
     commandBuffer.draw(vertexCount, instanceCount, firstVertex, firstInstance);
 }
 
@@ -452,11 +399,11 @@ void Swift::DrawIndexed(
     const int vertexOffset,
     const u32 firstInstance)
 {
-    const auto& commandBuffer = Render::GetCommandBuffer(gFrameData, gCurrentFrame);
+    const auto& commandBuffer = Render::GetCommandBuffer(gCurrentFrameData);
     commandBuffer.drawIndexed(indexCount, instanceCount, firstIndex, vertexOffset, firstInstance);
 }
 
-ImageObject Swift::CreateWriteableImage(glm::uvec2 size)
+ImageObject Swift::CreateWriteableImage(const glm::uvec2 size)
 {
     constexpr auto imageUsage = vk::ImageUsageFlagBits::eColorAttachment |
                                 vk::ImageUsageFlagBits::eTransferSrc |
@@ -663,7 +610,7 @@ u64 Swift::GetBufferAddress(const BufferObject& buffer)
 void Swift::BindIndexBuffer(const BufferObject& bufferObject)
 {
     const auto& realBuffer = gBuffers.at(bufferObject.index);
-    const auto& commandBuffer = Render::GetCommandBuffer(gFrameData, gCurrentFrame);
+    const auto& commandBuffer = Render::GetCommandBuffer(gCurrentFrameData);
     commandBuffer.bindIndexBuffer(realBuffer, 0, vk::IndexType::eUint32);
 }
 
@@ -671,7 +618,7 @@ void Swift::ClearImage(
     const ImageObject image,
     const glm::vec4 color)
 {
-    const auto& commandBuffer = Render::GetCommandBuffer(gFrameData, gCurrentFrame);
+    const auto& commandBuffer = Render::GetCommandBuffer(gCurrentFrameData);
     auto& realImage = Util::GetRealImage(image, gSamplerImages, gWriteableImages);
     const auto generalBarrier = Util::ImageBarrier(
         vk::ImageLayout::eUndefined,
@@ -693,7 +640,7 @@ void Swift::ClearImage(
 
 void Swift::ClearSwapchainImage(const glm::vec4 color)
 {
-    const auto& commandBuffer = Render::GetCommandBuffer(gFrameData, gCurrentFrame);
+    const auto& commandBuffer = Render::GetCommandBuffer(gCurrentFrameData);
     const auto generalBarrier = Util::ImageBarrier(
         vk::ImageLayout::eUndefined,
         vk::ImageLayout::eGeneral,
@@ -717,7 +664,7 @@ void Swift::CopyImage(
     const ImageObject dstImageObject,
     const glm::uvec2 extent)
 {
-    const auto& commandBuffer = Render::GetCommandBuffer(gFrameData, gCurrentFrame);
+    const auto& commandBuffer = Render::GetCommandBuffer(gCurrentFrameData);
     constexpr auto srcLayout = vk::ImageLayout::eTransferSrcOptimal;
     constexpr auto dstLayout = vk::ImageLayout::eTransferDstOptimal;
     auto& srcImage = Util::GetRealImage(srcImageObject, gSamplerImages, gWriteableImages);
@@ -740,7 +687,7 @@ void Swift::CopyToSwapchain(
     const ImageObject srcImageObject,
     const glm::uvec2 extent)
 {
-    const auto& commandBuffer = Render::GetCommandBuffer(gFrameData, gCurrentFrame);
+    const auto& commandBuffer = Render::GetCommandBuffer(gCurrentFrameData);
     constexpr auto srcLayout = vk::ImageLayout::eTransferSrcOptimal;
     constexpr auto dstLayout = vk::ImageLayout::eTransferDstOptimal;
     auto& srcImage = Util::GetRealImage(srcImageObject, gSamplerImages, gWriteableImages);
@@ -766,7 +713,7 @@ void Swift::BlitImage(
     glm::uvec2 srcOffset,
     glm::uvec2 dstOffset)
 {
-    const auto commandBuffer = Render::GetCommandBuffer(gFrameData, gCurrentFrame);
+    const auto commandBuffer = Render::GetCommandBuffer(gCurrentFrameData);
     constexpr auto srcLayout = vk::ImageLayout::eTransferSrcOptimal;
     constexpr auto dstLayout = vk::ImageLayout::eTransferDstOptimal;
 
@@ -799,7 +746,7 @@ void Swift::BlitToSwapchain(
     const ImageObject srcImageObject,
     const glm::uvec2 srcExtent)
 {
-    const auto commandBuffer = Render::GetCommandBuffer(gFrameData, gCurrentFrame);
+    const auto commandBuffer = Render::GetCommandBuffer(gCurrentFrameData);
     constexpr auto srcLayout = vk::ImageLayout::eTransferSrcOptimal;
     constexpr auto dstLayout = vk::ImageLayout::eTransferDstOptimal;
 
@@ -831,7 +778,7 @@ void Swift::DispatchCompute(
     const u32 y,
     const u32 z)
 {
-    const auto commandBuffer = Render::GetCommandBuffer(gFrameData, gCurrentFrame);
+    const auto commandBuffer = Render::GetCommandBuffer(gCurrentFrameData);
     commandBuffer.dispatch(x, y, z);
 }
 
@@ -839,8 +786,8 @@ void Swift::PushConstant(
     const void* value,
     const u32 size)
 {
-    const auto& commandBuffer = Render::GetCommandBuffer(gFrameData, gCurrentFrame);
-    const auto& [shaders, stageFlags, pipelineLayout] = gShaders.at(gCurrentShader);
+    const auto& commandBuffer = Render::GetCommandBuffer(gCurrentFrameData);
+    const auto& [shaders, stageFlags, pipeline, pipelineLayout] = gShaders.at(gCurrentShader);
 
     vk::ShaderStageFlags pushStageFlags;
     if (std::ranges::find(stageFlags, vk::ShaderStageFlagBits::eVertex) != stageFlags.end())

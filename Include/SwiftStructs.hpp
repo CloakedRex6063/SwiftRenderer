@@ -7,11 +7,19 @@ namespace Swift
 {
     struct InitInfo
     {
+        // Name for the app. Optional
         std::string appName{};
+        // Name of the engine. Optional
         std::string engineName{};
+        // Extent of the swapchain to be created. Mandatory
         glm::uvec2 extent{};
+        // Native window handle. Mandatory
+        // TODO: use std::variant to allow for linux support
         HWND hwnd{};
+        // Enable imgui support. Optional
         bool enableImGui{};
+        // Use for wider support of GPUs and possibly better performance. Optional
+        bool bUsePipelines{};
 
         InitInfo& SetAppName(const std::string_view appName)
         {
@@ -36,6 +44,11 @@ namespace Swift
         InitInfo& SetEnableImGui(const bool enableImGui)
         {
             this->enableImGui = enableImGui;
+            return *this;
+        }
+        InitInfo& SetUsePipelines(const bool usePipelines)
+        {
+            this->bUsePipelines = usePipelines;
             return *this;
         }
     };

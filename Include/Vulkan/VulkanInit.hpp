@@ -1,24 +1,11 @@
 #pragma once
 #include "VulkanStructs.hpp"
 
+#include <SwiftStructs.hpp>
+
 namespace Swift::Vulkan::Init
 {
-    vk::Instance CreateInstance(
-        std::string_view appName,
-        std::string_view engineName);
-
-    vk::SurfaceKHR CreateSurface(
-        vk::Instance instance,
-        HWND hwnd);
-
-    vk::PhysicalDevice ChooseGPU(
-        const vk::Instance& instance,
-        const vk::SurfaceKHR& surface);
-
-    vk::Device CreateDevice(
-        vk::PhysicalDevice physicalDevice,
-        vk::SurfaceKHR surface);
-    VmaAllocator CreateAllocator(const Context& context);
+    Context CreateContext(const InitInfo& initInfo);
 
     vk::SwapchainKHR CreateSwapchain(
         const Context& context,
@@ -50,7 +37,7 @@ namespace Swift::Vulkan::Init
         const Context& context,
         vk::Image image,
         std::string_view debugName);
-    
+
     std::tuple<
         vk::Image,
         VmaAllocation>
@@ -88,7 +75,7 @@ namespace Swift::Vulkan::Init
     vk::Semaphore CreateSemaphore(
         const Context& context,
         std::string_view debugName);
-    
+
     vk::CommandBuffer CreateCommandBuffer(
         const Context& context,
         vk::CommandPool commandPool,
@@ -97,10 +84,6 @@ namespace Swift::Vulkan::Init
         const Context& context,
         u32 queueIndex,
         std::string_view debugName);
-    
-    vk::DispatchLoaderDynamic CreateDynamicLoader(
-        vk::Instance instance,
-        vk::Device device);
 
     vk::Sampler CreateSampler(vk::Device device);
 
@@ -113,11 +96,20 @@ namespace Swift::Vulkan::Init
         vk::DescriptorPool descriptorPool,
         vk::DescriptorSetLayout descriptorSetLayout);
 
-    vk::ShaderCreateInfoEXT CreateShader(
-        std::span<char> shaderCode,
-        vk::ShaderStageFlagBits shaderStage,
-        const vk::DescriptorSetLayout& descriptorSetLayout,
-        const vk::PushConstantRange& pushConstantRange,
-        vk::ShaderCreateFlagsEXT shaderFlags = {},
-        vk::ShaderStageFlags nextStage = {});
+    Shader CreateGraphicsShader(
+        Context context,
+        BindlessDescriptor descriptor,
+        bool bUsePipeline,
+        u32 pushConstantSize,
+        std::string_view vertexPath,
+        std::string_view fragmentPath,
+        std::string_view debugName);
+
+    Shader CreateComputeShader(
+        Context context,
+        BindlessDescriptor descriptor,
+        bool bUsePipeline,
+        u32 pushConstantSize,
+        std::string_view computePath,
+        std::string_view debugName);
 } // namespace Swift::Vulkan::Init

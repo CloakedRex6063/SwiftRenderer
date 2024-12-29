@@ -1,10 +1,9 @@
 #include "Vulkan/VulkanInit.hpp"
+#include "Utils/FileIO.hpp"
 #include "Vulkan/VulkanConstants.hpp"
 #include "Vulkan/VulkanStructs.hpp"
 #include "Vulkan/VulkanUtil.hpp"
 #include "vulkan/vulkan_win32.h"
-
-#include <complex.h>
 
 namespace
 {
@@ -85,11 +84,8 @@ namespace
         const auto [result, capabilities] = gpu.getSurfaceCapabilitiesKHR(surface);
         return capabilities.currentTransform;
     }
-} // namespace
 
-namespace Swift::Vulkan
-{
-    vk::Instance Init::CreateInstance(
+    vk::Instance CreateInstance(
         const std::string_view appName,
         const std::string_view engineName)
     {
@@ -128,17 +124,18 @@ namespace Swift::Vulkan
         return instance;
     }
 
-    vk::SurfaceKHR Init::CreateSurface(
-        const vk::Instance instance,
-        const HWND hwnd)
+    vk::SurfaceKHR CreateSurface(
+        const Swift::Vulkan::Context& context,
+        const Swift::InitInfo& initInfo)
     {
 #ifdef SWIFT_WINDOWS
         const VkWin32SurfaceCreateInfoKHR surfaceCreateInfo{
             .sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR,
             .hinstance = GetModuleHandle(nullptr),
-            .hwnd = hwnd};
+            .hwnd = initInfo.hwnd,
+        };
         VkSurfaceKHR surface;
-        vkCreateWin32SurfaceKHR(instance, &surfaceCreateInfo, nullptr, &surface);
+        vkCreateWin32SurfaceKHR(context.instance, &surfaceCreateInfo, nullptr, &surface);
 #endif
         return surface;
     }
@@ -146,13 +143,13 @@ namespace Swift::Vulkan
     // From
     // https://github.com/BredaUniversityGames/Y2024-25-PR-BB/blob/main/engine/renderer/private/vulkan_context.cpp
 
-    vk::PhysicalDevice Init::ChooseGPU(
-        const vk::Instance& instance,
-        const vk::SurfaceKHR& surface)
+    vk::PhysicalDevice ChooseGPU(
+        const Swift::Vulkan::Context& context,
+        const Swift::InitInfo& initInfo)
     {
         std::map<u32, vk::PhysicalDevice> scores;
 
-        auto [result, devices] = instance.enumeratePhysicalDevices();
+        auto [result, devices] = context.instance.enumeratePhysicalDevices();
         VK_ASSERT(result, "Failed to enumerate physical devices");
         for (auto device : devices)
         {
@@ -176,14 +173,20 @@ namespace Swift::Vulkan
             }
 
             // Failed if it doesn't support both graphics and present
-            if (!CheckQueueSupport(device, surface))
+            if (!CheckQueueSupport(device, context.surface))
             {
                 continue;
             }
 
-            std::array extensions{
-                VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-                VK_EXT_SHADER_OBJECT_EXTENSION_NAME};
+            std::array<const char*, 2> extensions{VK_KHR_SWAPCHAIN_EXTENSION_NAME};
+            if (initInfo.bUsePipelines)
+            {
+                extensions[1] = VK_EXT_EXTENDED_DYNAMIC_STATE_3_EXTENSION_NAME;
+            }
+            else
+            {
+                extensions[1] = VK_EXT_SHADER_OBJECT_EXTENSION_NAME;
+            }
 
             bool extensionSupported = true;
             auto [result, extensionProps] = device.enumerateDeviceExtensionProperties();
@@ -213,7 +216,7 @@ namespace Swift::Vulkan
             }
 
             // Check support for swap chain.
-            if (!CheckSwapchainSupport(device, surface))
+            if (!CheckSwapchainSupport(device, context.surface))
             {
                 continue;
             }
@@ -234,20 +237,25 @@ namespace Swift::Vulkan
         return scores.rbegin()->second;
     }
 
-    vk::Device Init::CreateDevice(
-        const vk::PhysicalDevice physicalDevice,
-        const vk::SurfaceKHR surface)
+    vk::Device CreateDevice(
+        const Swift::Vulkan::Context& context,
+        const Swift::InitInfo& initInfo)
     {
-        std::vector extensionNames{
-            VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-            VK_EXT_SHADER_OBJECT_EXTENSION_NAME};
+        std::vector extensionNames{VK_KHR_SWAPCHAIN_EXTENSION_NAME};
+        if (initInfo.bUsePipelines)
+        {
+            extensionNames.emplace_back(VK_EXT_EXTENDED_DYNAMIC_STATE_3_EXTENSION_NAME);
+        }
+        else
+        {
+            extensionNames.emplace_back(VK_EXT_SHADER_OBJECT_EXTENSION_NAME);
+        }
 
-        const auto [requireResult, extensions] =
-            physicalDevice.enumerateDeviceExtensionProperties();
+        const auto [requireResult, extensions] = context.gpu.enumerateDeviceExtensionProperties();
         VK_ASSERT(requireResult, "Failed to enumerate physical device properties");
         for (const auto& extension : extensionNames)
         {
-            auto iterator = std::ranges::find_if(
+            const auto iterator = std::ranges::find_if(
                 extensions,
                 [extension](const vk::ExtensionProperties& supported)
                 {
@@ -260,14 +268,30 @@ namespace Swift::Vulkan
             }
         }
 
-        auto structureChain = vk::StructureChain<
+        using ShaderVariant = vk::StructureChain<
             vk::DeviceCreateInfo,
             vk::PhysicalDeviceFeatures2,
             vk::PhysicalDeviceVulkan12Features,
             vk::PhysicalDeviceVulkan13Features,
-            vk::PhysicalDeviceShaderObjectFeaturesEXT>();
+            vk::PhysicalDeviceShaderObjectFeaturesEXT>;
+        using PipelineVariant = vk::StructureChain<
+            vk::DeviceCreateInfo,
+            vk::PhysicalDeviceFeatures2,
+            vk::PhysicalDeviceVulkan12Features,
+            vk::PhysicalDeviceVulkan13Features,
+            vk::PhysicalDeviceExtendedDynamicState3FeaturesEXT>;
 
-        auto& features12 = structureChain.get<vk::PhysicalDeviceVulkan12Features>();
+        std::variant<ShaderVariant, PipelineVariant> structureChain;
+
+        structureChain = initInfo.bUsePipelines
+                             ? std::variant<ShaderVariant, PipelineVariant>(PipelineVariant{})
+                             : std::variant<ShaderVariant, PipelineVariant>(ShaderVariant{});
+
+        auto& features12 =
+            initInfo.bUsePipelines
+                ? std::get<PipelineVariant>(structureChain)
+                      .get<vk::PhysicalDeviceVulkan12Features>()
+                : std::get<ShaderVariant>(structureChain).get<vk::PhysicalDeviceVulkan12Features>();
         features12.setBufferDeviceAddress(true)
             .setDescriptorBindingPartiallyBound(true)
             .setDescriptorBindingSampledImageUpdateAfterBind(true)
@@ -276,7 +300,11 @@ namespace Swift::Vulkan
             .setDescriptorBindingUniformBufferUpdateAfterBind(true)
             .setRuntimeDescriptorArray(true);
 
-        auto& features13 = structureChain.get<vk::PhysicalDeviceVulkan13Features>();
+        auto& features13 =
+            initInfo.bUsePipelines
+                ? std::get<PipelineVariant>(structureChain)
+                      .get<vk::PhysicalDeviceVulkan13Features>()
+                : std::get<ShaderVariant>(structureChain).get<vk::PhysicalDeviceVulkan13Features>();
         features13.setDynamicRendering(true).setSynchronization2(true).setMaintenance4(true);
 
         constexpr auto deviceFeatures = vk::PhysicalDeviceFeatures()
@@ -286,15 +314,40 @@ namespace Swift::Vulkan
                                             .setShaderStorageBufferArrayDynamicIndexing(true)
                                             .setShaderUniformBufferArrayDynamicIndexing(true);
 
-        auto& deviceFeatures2 = structureChain.get<vk::PhysicalDeviceFeatures2>();
+        auto& deviceFeatures2 =
+            initInfo.bUsePipelines
+                ? std::get<PipelineVariant>(structureChain).get<vk::PhysicalDeviceFeatures2>()
+                : std::get<ShaderVariant>(structureChain).get<vk::PhysicalDeviceFeatures2>();
         deviceFeatures2.setFeatures(deviceFeatures);
 
-        auto& shaderObjectFeatures =
-            structureChain.get<vk::PhysicalDeviceShaderObjectFeaturesEXT>();
-        shaderObjectFeatures.setShaderObject(true);
+        if (initInfo.bUsePipelines)
+        {
+            auto& dynamicState3 = std::get<PipelineVariant>(structureChain)
+                                      .get<vk::PhysicalDeviceExtendedDynamicState3FeaturesEXT>();
+            dynamicState3.setExtendedDynamicState3AlphaToCoverageEnable(true)
+                .setExtendedDynamicState3AlphaToOneEnable(true)
+                .setExtendedDynamicState3ColorBlendAdvanced(true)
+                .setExtendedDynamicState3ColorBlendEnable(true)
+                .setExtendedDynamicState3ColorBlendEquation(true)
+                .setExtendedDynamicState3ColorWriteMask(true)
+                .setExtendedDynamicState3ConservativeRasterizationMode(true)
+                .setExtendedDynamicState3DepthClampEnable(true)
+                .setExtendedDynamicState3RasterizationSamples(true)
+                .setExtendedDynamicState3PolygonMode(true)
+                .setExtendedDynamicState3SampleMask(true);
+        }
 
+        if (!initInfo.bUsePipelines)
+        {
+            auto& shaderObjectFeatures = std::get<ShaderVariant>(structureChain)
+                                             .get<vk::PhysicalDeviceShaderObjectFeaturesEXT>();
+            shaderObjectFeatures.setShaderObject(true);
+        }
+
+        const auto indices =
+            Swift::Vulkan::Util::GetQueueFamilyIndices(context.gpu, context.surface);
         std::vector<vk::DeviceQueueCreateInfo> queueCreateInfos;
-        for (const auto family : Util::GetQueueFamilyIndices(physicalDevice, surface))
+        for (const auto family : indices)
         {
             auto priority = 1.0f;
             auto queueCreateInfo = vk::DeviceQueueCreateInfo()
@@ -304,15 +357,18 @@ namespace Swift::Vulkan
             queueCreateInfos.emplace_back(queueCreateInfo);
         }
 
-        auto& deviceCreateInfo = structureChain.get<vk::DeviceCreateInfo>();
+        auto& deviceCreateInfo =
+            initInfo.bUsePipelines
+                ? std::get<PipelineVariant>(structureChain).get<vk::DeviceCreateInfo>()
+                : std::get<ShaderVariant>(structureChain).get<vk::DeviceCreateInfo>();
         deviceCreateInfo.setPEnabledExtensionNames(extensionNames)
             .setQueueCreateInfos(queueCreateInfos);
-        auto [result, device] = physicalDevice.createDevice(deviceCreateInfo);
+        auto [result, device] = context.gpu.createDevice(deviceCreateInfo);
         VK_ASSERT(result, "Failed to create device");
         return device;
     }
 
-    VmaAllocator Init::CreateAllocator(const Context& context)
+    VmaAllocator CreateAllocator(const Swift::Vulkan::Context& context)
     {
         VmaAllocator allocator;
         const VmaAllocatorCreateInfo createInfo{
@@ -324,6 +380,238 @@ namespace Swift::Vulkan
         };
         vmaCreateAllocator(&createInfo, &allocator);
         return allocator;
+    }
+
+    vk::DispatchLoaderDynamic CreateDynamicLoader(const Swift::Vulkan::Context& context)
+    {
+        return {context.instance, vkGetInstanceProcAddr, context.device, vkGetDeviceProcAddr};
+    }
+
+    vk::ShaderCreateInfoEXT CreateShaderExt(
+        const std::span<char> shaderCode,
+        const vk::ShaderStageFlagBits shaderStage,
+        const vk::DescriptorSetLayout& descriptorSetLayout,
+        const vk::PushConstantRange& pushConstantRange,
+        const vk::ShaderCreateFlagsEXT shaderFlags = {},
+        const vk::ShaderStageFlags nextStage = {})
+    {
+        auto shaderCreateInfo = vk::ShaderCreateInfoEXT()
+                                    .setStage(shaderStage)
+                                    .setFlags(shaderFlags)
+                                    .setNextStage(nextStage)
+                                    .setCodeType(vk::ShaderCodeTypeEXT::eSpirv)
+                                    .setPCode(shaderCode.data())
+                                    .setCodeSize(shaderCode.size())
+                                    .setPName("main")
+                                    .setSetLayouts(descriptorSetLayout);
+        if (pushConstantRange.size > 0)
+        {
+            shaderCreateInfo.setPushConstantRanges(pushConstantRange);
+        }
+        return shaderCreateInfo;
+    };
+
+    std::vector<vk::ShaderEXT> CreateGraphicsShaderExt(
+        const Swift::Vulkan::Context& context,
+        const Swift::Vulkan::BindlessDescriptor& descriptor,
+        const vk::PushConstantRange pushConstantRange,
+        const std::span<char> vertexCode,
+        const std::span<char> fragmentCode)
+    {
+        const std::array shaderCreateInfo{
+            CreateShaderExt(
+                vertexCode,
+                vk::ShaderStageFlagBits::eVertex,
+                descriptor.setLayout,
+                pushConstantRange,
+                vk::ShaderCreateFlagBitsEXT::eLinkStage,
+                vk::ShaderStageFlagBits::eFragment),
+            CreateShaderExt(
+                fragmentCode,
+                vk::ShaderStageFlagBits::eFragment,
+                descriptor.setLayout,
+                pushConstantRange,
+                vk::ShaderCreateFlagBitsEXT::eLinkStage),
+        };
+
+        const auto [result, shaders] =
+            context.device.createShadersEXT(shaderCreateInfo, nullptr, context.dynamicLoader);
+        VK_ASSERT(result, "Failed to create shaders!");
+        return shaders;
+    }
+
+    std::vector<vk::ShaderEXT> CreateComputeShaderExt(
+        const Swift::Vulkan::Context& context,
+        const Swift::Vulkan::BindlessDescriptor& descriptor,
+        const vk::PushConstantRange pushConstantRange,
+        const std::span<char> computeCode)
+    {
+        const auto shaderCreateInfo = CreateShaderExt(
+            computeCode,
+            vk::ShaderStageFlagBits::eVertex,
+            descriptor.setLayout,
+            pushConstantRange);
+
+        const auto [result, shaders] =
+            context.device.createShadersEXT(shaderCreateInfo, nullptr, context.dynamicLoader);
+        VK_ASSERT(result, "Failed to create shaders!");
+        return shaders;
+    }
+
+    vk::ShaderModule CreateShaderModule(
+        const Swift::Vulkan::Context& context,
+        const std::span<char> code)
+    {
+        const auto createInfo = vk::ShaderModuleCreateInfo()
+                                    .setCodeSize(code.size())
+                                    .setPCode(reinterpret_cast<u32*>(code.data()));
+        const auto [result, module] = context.device.createShaderModule(createInfo);
+        VK_ASSERT(result, "Failed to create shader module!");
+        return module;
+    }
+
+    vk::PipelineShaderStageCreateInfo CreateShaderStage(
+        const vk::ShaderStageFlagBits stage,
+        const vk::ShaderModule shaderModule)
+    {
+        const auto shaderCreateInfo = vk::PipelineShaderStageCreateInfo()
+                                          .setStage(stage)
+                                          .setModule(shaderModule)
+                                          .setPName("main");
+        return shaderCreateInfo;
+    }
+
+    vk::Pipeline CreateGraphicsPipeline(
+        const Swift::Vulkan::Context& context,
+        const vk::PipelineLayout layout,
+        const std::span<char> vertexCode,
+        const std::span<char> fragmentCode)
+    {
+        const std::array shaderModules = {
+            CreateShaderModule(context, vertexCode),
+            CreateShaderModule(context, fragmentCode),
+        };
+        const std::array shaderStages = {
+            CreateShaderStage(vk::ShaderStageFlagBits::eVertex, shaderModules[0]),
+            CreateShaderStage(vk::ShaderStageFlagBits::eFragment, shaderModules[1])};
+
+        constexpr std::array dynamicStates = {
+            vk::DynamicState::eViewport,
+            vk::DynamicState::eScissor,
+        };
+        const auto dynamicStatesCreateInfo =
+            vk::PipelineDynamicStateCreateInfo().setDynamicStates(dynamicStates);
+
+        constexpr auto vertexInputCreateInfo = vk::PipelineVertexInputStateCreateInfo();
+        constexpr auto inputAssemblyCreateInfo =
+            vk::PipelineInputAssemblyStateCreateInfo().setTopology(
+                vk::PrimitiveTopology::eTriangleList);
+        constexpr auto viewport =
+            vk::Viewport().setWidth(1280.f).setHeight(720.f).setMinDepth(1.f).setMaxDepth(0.f);
+        constexpr auto scissor = vk::Rect2D().setExtent({1280, 720});
+        const auto viewportCreateInfo =
+            vk::PipelineViewportStateCreateInfo().setViewports(viewport).setScissors(scissor);
+        constexpr auto rasterizationCreateInfo =
+            vk::PipelineRasterizationStateCreateInfo().setLineWidth(1.f);
+        constexpr auto msaaStateCreateInfo =
+            vk::PipelineMultisampleStateCreateInfo()
+                .setMinSampleShading(1.f)
+                .setRasterizationSamples(vk::SampleCountFlagBits::e1);
+        constexpr auto depthStencilStateCreateInfo =
+            vk::PipelineDepthStencilStateCreateInfo()
+                .setDepthTestEnable(true)
+                .setDepthWriteEnable(true)
+                .setDepthCompareOp(vk::CompareOp::eGreaterOrEqual);
+        constexpr auto colorBlendAttachmentState =
+            vk::PipelineColorBlendAttachmentState()
+                .setBlendEnable(true)
+                .setColorWriteMask(
+                    vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG |
+                    vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA)
+                .setAlphaBlendOp(vk::BlendOp::eAdd)
+                .setColorBlendOp(vk::BlendOp::eAdd)
+                .setSrcAlphaBlendFactor(vk::BlendFactor::eSrcAlpha)
+                .setSrcColorBlendFactor(vk::BlendFactor::eOne)
+                .setDstAlphaBlendFactor(vk::BlendFactor::eZero)
+                .setDstColorBlendFactor(vk::BlendFactor::eOneMinusSrcAlpha);
+        const auto colorBlendStateCreateInfo = vk::PipelineColorBlendStateCreateInfo()
+                                                   .setLogicOpEnable(false)
+                                                   .setLogicOp(vk::LogicOp::eCopy)
+                                                   .setAttachments(colorBlendAttachmentState);
+
+        auto colorFormat = vk::Format::eR16G16B16A16Sfloat;
+        const auto renderCreateInfo = vk::PipelineRenderingCreateInfo()
+                                          .setColorAttachmentFormats(colorFormat)
+                                          .setDepthAttachmentFormat(vk::Format::eD32Sfloat);
+
+        const auto createInfo = vk::GraphicsPipelineCreateInfo()
+                                    .setPNext(&renderCreateInfo)
+                                    .setLayout(layout)
+                                    .setStages(shaderStages)
+                                    .setPVertexInputState(&vertexInputCreateInfo)
+                                    .setPInputAssemblyState(&inputAssemblyCreateInfo)
+                                    .setPViewportState(&viewportCreateInfo)
+                                    .setPRasterizationState(&rasterizationCreateInfo)
+                                    .setPMultisampleState(&msaaStateCreateInfo)
+                                    .setPDynamicState(&dynamicStatesCreateInfo)
+                                    .setPDepthStencilState(&depthStencilStateCreateInfo)
+                                    .setPColorBlendState(&colorBlendStateCreateInfo);
+
+        const auto [result, graphicsPipeline] =
+            context.device.createGraphicsPipeline(nullptr, createInfo);
+        VK_ASSERT(result, "Failed to create graphics pipeline!");
+
+        for (const auto& shader : shaderModules)
+        {
+            context.device.destroy(shader);
+        }
+        return graphicsPipeline;
+    }
+
+    vk::Pipeline CreateComputePipeline(
+        const Swift::Vulkan::Context& context,
+        const vk::PipelineLayout layout,
+        const std::span<char> computeCode)
+    {
+        const auto shaderModule = CreateShaderModule(context, computeCode);
+        const auto stage = CreateShaderStage(vk::ShaderStageFlagBits::eCompute, shaderModule);
+        const auto createInfo = vk::ComputePipelineCreateInfo().setLayout(layout).setStage(stage);
+        const auto [result, computePipeline] =
+            context.device.createComputePipeline(nullptr, createInfo);
+        VK_ASSERT(result, "Failed to create compute pipeline!");
+        return computePipeline;
+    }
+
+    vk::PipelineLayout CreatePipelineLayout(
+        Swift::Vulkan::Context context,
+        Swift::Vulkan::BindlessDescriptor descriptor,
+        vk::PushConstantRange pushConstantRange)
+    {
+        auto layoutCreateInfo = vk::PipelineLayoutCreateInfo().setSetLayouts(descriptor.setLayout);
+        if (pushConstantRange.size > 0)
+        {
+            layoutCreateInfo.setPushConstantRanges(pushConstantRange);
+        }
+        // TODO: cache similar pipeline layouts
+        const auto [pipeResult, pipelineLayout] =
+            context.device.createPipelineLayout(layoutCreateInfo);
+        VK_ASSERT(pipeResult, "Failed to create pipeline layout for shader!");
+        return pipelineLayout;
+    }
+} // namespace
+
+namespace Swift::Vulkan
+{
+    Context Init::CreateContext(const InitInfo& initInfo)
+    {
+        Context context;
+        context.SetInstance(CreateInstance(initInfo.appName, initInfo.engineName))
+            .SetSurface(CreateSurface(context, initInfo))
+            .SetGPU(ChooseGPU(context, initInfo))
+            .SetDevice(CreateDevice(context, initInfo))
+            .SetAllocator(CreateAllocator(context))
+            .SetDynamicLoader(CreateDynamicLoader(context));
+        return context;
     }
 
     vk::SwapchainKHR Init::CreateSwapchain(
@@ -600,12 +888,6 @@ namespace Swift::Vulkan
         Util::NameObject(commandPool, debugName, context);
         return commandPool;
     }
-    vk::DispatchLoaderDynamic Init::CreateDynamicLoader(
-        const vk::Instance instance,
-        const vk::Device device)
-    {
-        return {instance, vkGetInstanceProcAddr, device, vkGetDeviceProcAddr};
-    }
 
     vk::Sampler Init::CreateSampler(const vk::Device device)
     {
@@ -673,7 +955,7 @@ namespace Swift::Vulkan
     {
         if (poolSizes.empty())
         {
-            constexpr std::array poolSizes{
+            constexpr std::array tempPoolSizes{
                 vk::DescriptorPoolSize()
                     .setDescriptorCount(Constants::MaxUniformDescriptors)
                     .setType(vk::DescriptorType::eUniformBuffer),
@@ -685,10 +967,13 @@ namespace Swift::Vulkan
                     .setType(vk::DescriptorType::eSampler),
                 vk::DescriptorPoolSize()
                     .setDescriptorCount(Constants::MaxImageDescriptors)
-                    .setType(vk::DescriptorType::eStorageImage)};
+                    .setType(vk::DescriptorType::eStorageImage),
+            };
             const auto createInfo =
-                vk::DescriptorPoolCreateInfo().setMaxSets(1).setPoolSizes(poolSizes).setFlags(
-                    vk::DescriptorPoolCreateFlagBits::eUpdateAfterBind);
+                vk::DescriptorPoolCreateInfo()
+                    .setMaxSets(1)
+                    .setPoolSizes(tempPoolSizes)
+                    .setFlags(vk::DescriptorPoolCreateFlagBits::eUpdateAfterBind);
             auto [result, descriptorPool] = device.createDescriptorPool(createInfo);
             VK_ASSERT(result, "Failed to create descriptor pool");
             return descriptorPool;
@@ -715,28 +1000,91 @@ namespace Swift::Vulkan
         return descriptorSet.front();
     }
 
-    vk::ShaderCreateInfoEXT Init::CreateShader(
-        const std::span<char> shaderCode,
-        const vk::ShaderStageFlagBits shaderStage,
-        const vk::DescriptorSetLayout& descriptorSetLayout,
-        const vk::PushConstantRange& pushConstantRange,
-        const vk::ShaderCreateFlagsEXT shaderFlags,
-        const vk::ShaderStageFlags nextStage)
+    Shader Init::CreateGraphicsShader(
+        Context context,
+        BindlessDescriptor descriptor,
+        bool bUsePipeline,
+        u32 pushConstantSize,
+        std::string_view vertexPath,
+        std::string_view fragmentPath,
+        std::string_view debugName)
     {
-        auto shaderCreateInfo = vk::ShaderCreateInfoEXT()
-                                    .setStage(shaderStage)
-                                    .setFlags(shaderFlags)
-                                    .setNextStage(nextStage)
-                                    .setCodeType(vk::ShaderCodeTypeEXT::eSpirv)
-                                    .setPCode(shaderCode.data())
-                                    .setCodeSize(shaderCode.size())
-                                    .setPName("main")
-                                    .setSetLayouts(descriptorSetLayout);
-        if (pushConstantRange.size > 0)
+        const auto pushConstantRange = vk::PushConstantRange()
+                                           .setSize(pushConstantSize)
+                                           .setStageFlags(vk::ShaderStageFlagBits::eAllGraphics);
+
+        auto vertexCode = FileIO::ReadBinaryFile(vertexPath);
+        auto fragmentCode = FileIO::ReadBinaryFile(fragmentPath);
+
+        const auto pipelineLayout = CreatePipelineLayout(context, descriptor, pushConstantRange);
+
+        std::vector<vk::ShaderEXT> shadersExt;
+        vk::Pipeline pipeline;
+        if (bUsePipeline)
         {
-            shaderCreateInfo.setPushConstantRanges(pushConstantRange);
+            pipeline = CreateGraphicsPipeline(context, pipelineLayout, vertexCode, fragmentCode);
         }
-        return shaderCreateInfo;
+        else
+        {
+            shadersExt = CreateGraphicsShaderExt(
+                context,
+                descriptor,
+                pushConstantRange,
+                vertexCode,
+                fragmentCode);
+        }
+
+        const auto stageFlags = {
+            vk::ShaderStageFlagBits::eVertex,
+            vk::ShaderStageFlagBits::eFragment,
+        };
+
+        return Shader()
+            .SetShaders(shadersExt)
+            .SetPipeline(pipeline)
+            .SetPipelineLayout(pipelineLayout)
+            .SetStageFlags(stageFlags);
+
+        Util::NameObject(pipelineLayout, debugName, context);
+    }
+
+    Shader Init::CreateComputeShader(
+        Context context,
+        BindlessDescriptor descriptor,
+        bool bUsePipeline,
+        u32 pushConstantSize,
+        std::string_view computePath,
+        std::string_view debugName)
+    {
+        const auto pushConstantRange = vk::PushConstantRange()
+                                           .setSize(pushConstantSize)
+                                           .setStageFlags(vk::ShaderStageFlagBits::eAllGraphics);
+
+        auto computeCode = FileIO::ReadBinaryFile(computePath);
+
+        const auto pipelineLayout = CreatePipelineLayout(context, descriptor, pushConstantRange);
+
+        std::vector<vk::ShaderEXT> shadersExt;
+        vk::Pipeline pipeline;
+        if (bUsePipeline)
+        {
+            pipeline = CreateComputePipeline(context, pipelineLayout, computeCode);
+        }
+        else
+        {
+            shadersExt =
+                CreateComputeShaderExt(context, descriptor, pushConstantRange, computeCode);
+        }
+
+        const auto stageFlags = {vk::ShaderStageFlagBits::eCompute};
+
+        return Shader()
+            .SetShaders(shadersExt)
+            .SetPipeline(pipeline)
+            .SetPipelineLayout(pipelineLayout)
+            .SetStageFlags(stageFlags);
+
+        Util::NameObject(pipelineLayout, debugName, context);
     }
 
 } // namespace Swift::Vulkan
