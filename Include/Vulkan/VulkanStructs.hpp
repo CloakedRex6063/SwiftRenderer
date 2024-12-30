@@ -160,7 +160,6 @@ namespace Swift::Vulkan
         std::vector<Image> images;
         u32 imageIndex = 0;
         vk::Extent2D extent;
-        Image renderImage;
         Image depthImage;
 
         operator vk::SwapchainKHR() const { return swapchain; }
@@ -173,11 +172,6 @@ namespace Swift::Vulkan
         Swapchain& SetImages(const std::vector<Image>& images)
         {
             this->images = images;
-            return *this;
-        }
-        Swapchain& SetRenderImage(const Image& renderImage)
-        {
-            this->renderImage = renderImage;
             return *this;
         }
         Swapchain& SetDepthImage(const Image& depthImage)
@@ -199,7 +193,6 @@ namespace Swift::Vulkan
         void Destroy(const Context& context)
         {
             context.device.destroySwapchainKHR(swapchain);
-            renderImage.Destroy(context);
             depthImage.Destroy(context);
             for (auto& image : images)
             {

@@ -16,5 +16,6 @@ enum class BufferType : uint8_t
 {
     eUniform,
     eStorage,
-    eIndex
+    eIndex,
+    eIndirect
 };

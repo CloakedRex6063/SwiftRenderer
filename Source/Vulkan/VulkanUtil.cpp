@@ -1,8 +1,8 @@
 #include "Vulkan/VulkanUtil.hpp"
-#include "Vulkan/VulkanInit.hpp"
-#include "Vulkan/VulkanStructs.hpp" 
 #include "SwiftStructs.hpp"
-#include "Vulkan/VulkanConstants.hpp" 
+#include "Vulkan/VulkanConstants.hpp"
+#include "Vulkan/VulkanInit.hpp"
+#include "Vulkan/VulkanStructs.hpp"
 
 namespace Swift::Vulkan
 {
@@ -76,27 +76,6 @@ namespace Swift::Vulkan
         const auto result = context.device.waitIdle();
         VK_ASSERT(result, "Failed to wait for device while cleaning up");
         swapchain.Destroy(context);
-        constexpr auto renderFormat = vk::Format::eR16G16B16A16Sfloat;
-        auto [renderVkImage, renderAlloc] = Init::CreateImage(
-            context.allocator,
-            vk::Extent3D(extent, 1),
-            vk::ImageType::e2D,
-            renderFormat,
-            vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eTransferSrc |
-                vk::ImageUsageFlagBits::eTransferDst);
-
-        const auto renderView = Init::CreateImageView(
-            context,
-            renderVkImage,
-            renderFormat,
-            vk::ImageViewType::e2D,
-            vk::ImageAspectFlagBits::eColor,
-            "renderImage");
-        const auto renderImage = Image()
-                                     .SetFormat(renderFormat)
-                                     .SetImage(renderVkImage)
-                                     .SetAllocation(renderAlloc)
-                                     .SetView(renderView);
 
         constexpr auto depthFormat = vk::Format::eD32Sfloat;
         auto [depthVkImage, depthAlloc] = Init::CreateImage(
@@ -119,7 +98,6 @@ namespace Swift::Vulkan
                                     .SetAllocation(depthAlloc)
                                     .SetView(depthView);
         swapchain.SetSwapchain(Init::CreateSwapchain(context, extent, graphicsFamily))
-            .SetRenderImage(renderImage)
             .SetDepthImage(depthImage)
             .SetImages(Init::CreateSwapchainImages(context, swapchain))
             .SetExtent(extent);
@@ -302,9 +280,14 @@ namespace Swift::Vulkan
         }
         else
         {
-            UploadToBuffer(context, imageData[mipLevel].data(), buffer, 0, imageData[mipLevel].size());
+            UploadToBuffer(
+                context,
+                imageData[mipLevel].data(),
+                buffer,
+                0,
+                imageData[mipLevel].size());
         }
-        
+
         CopyBufferToImage(commandBuffer, staging, extent, maxMips, loadAllMips, image);
         return buffer;
     }
@@ -324,10 +307,9 @@ namespace Swift::Vulkan
             for (int i = 0; i < maxMips; i++)
             {
                 vk::Extent3D mipExtent = {
-                    std::max(1u, extent.width >> i),  
+                    std::max(1u, extent.width >> i),
                     std::max(1u, extent.height >> i),
-                    std::max(1u, extent.depth >> i)
-                };
+                    std::max(1u, extent.depth >> i)};
                 const auto bufferImageCopy =
                     vk::BufferImageCopy2()
                         .setImageExtent(mipExtent)
@@ -390,11 +372,21 @@ namespace Swift::Vulkan
         const auto blitRegion =
             vk::ImageBlit2()
                 .setSrcSubresource(GetImageSubresourceLayers(vk::ImageAspectFlagBits::eColor))
-                .setSrcOffsets(
-                    {vk::Offset3D(0, 0, 0), vk::Offset3D(srcExtent.width, srcExtent.height, 1)})
+                .setSrcOffsets({
+                    vk::Offset3D(),
+                    vk::Offset3D(
+                        static_cast<int>(srcExtent.width),
+                        static_cast<int>(srcExtent.height),
+                        1),
+                })
                 .setDstSubresource(GetImageSubresourceLayers(vk::ImageAspectFlagBits::eColor))
-                .setDstOffsets(
-                    {vk::Offset3D(0, 0, 0), vk::Offset3D(dstExtent.width, dstExtent.height, 1)});
+                .setDstOffsets({
+                    vk::Offset3D(),
+                    vk::Offset3D(
+                        static_cast<int>(dstExtent.width),
+                        static_cast<int>(dstExtent.height),
+                        1),
+                });
         const auto blitInfo = vk::BlitImageInfo2()
                                   .setSrcImage(srcImage)
                                   .setSrcImageLayout(srcLayout)

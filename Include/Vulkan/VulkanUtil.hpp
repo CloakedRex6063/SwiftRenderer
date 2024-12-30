@@ -160,7 +160,7 @@ namespace Swift::Vulkan::Util
         const std::string_view label,
         const Context& context)
     {
-#if defined(NDEBUG)
+#if not defined(SWIFT_VULKAN_VALIDATION)
         return;
 #endif
         vk::DebugUtilsObjectNameInfoEXT nameInfo{};

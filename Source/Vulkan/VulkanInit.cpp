@@ -271,12 +271,14 @@ namespace
         using ShaderVariant = vk::StructureChain<
             vk::DeviceCreateInfo,
             vk::PhysicalDeviceFeatures2,
+            vk::PhysicalDeviceVulkan11Features,
             vk::PhysicalDeviceVulkan12Features,
             vk::PhysicalDeviceVulkan13Features,
             vk::PhysicalDeviceShaderObjectFeaturesEXT>;
         using PipelineVariant = vk::StructureChain<
             vk::DeviceCreateInfo,
             vk::PhysicalDeviceFeatures2,
+            vk::PhysicalDeviceVulkan11Features,
             vk::PhysicalDeviceVulkan12Features,
             vk::PhysicalDeviceVulkan13Features,
             vk::PhysicalDeviceExtendedDynamicState3FeaturesEXT>;
@@ -287,6 +289,13 @@ namespace
                              ? std::variant<ShaderVariant, PipelineVariant>(PipelineVariant{})
                              : std::variant<ShaderVariant, PipelineVariant>(ShaderVariant{});
 
+        auto& features11 =
+            initInfo.bUsePipelines
+                ? std::get<PipelineVariant>(structureChain)
+                      .get<vk::PhysicalDeviceVulkan11Features>()
+                : std::get<ShaderVariant>(structureChain).get<vk::PhysicalDeviceVulkan11Features>();
+        features11.setShaderDrawParameters(true);
+        
         auto& features12 =
             initInfo.bUsePipelines
                 ? std::get<PipelineVariant>(structureChain)

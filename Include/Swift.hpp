@@ -25,6 +25,11 @@ namespace Swift
         u32 firstIndex,
         int vertexOffset,
         u32 firstInstance);
+    void DrawIndexedIndirect(
+        const BufferObject& buffer,
+        u64 offset,
+        u32 drawCount,
+        u32 stride);
 
     ShaderObject CreateGraphicsShaderObject(
         std::string_view vertexPath,
@@ -46,7 +51,8 @@ namespace Swift
 
     BufferObject CreateBuffer(
         BufferType bufferType,
-        u32 size);
+        u32 size,
+        std::string_view debugName);
     void DestroyBuffer(BufferObject bufferObject);
 
     void* MapBuffer(BufferObject bufferObject);

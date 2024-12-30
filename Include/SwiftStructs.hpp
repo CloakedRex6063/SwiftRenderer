@@ -67,8 +67,8 @@ namespace Swift
 
     struct BufferObject
     {
-        u32 index;
-        u32 size;
+        u32 index{};
+        u32 size{};
         
         BufferObject& SetIndex(const u32 index)
         {

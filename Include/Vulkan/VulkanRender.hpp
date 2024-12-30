@@ -25,7 +25,7 @@ namespace Swift::Vulkan::Render
 
     inline Image& GetSwapchainImage(Swapchain& swapchain)
     {
-        return swapchain.images[swapchain.imageIndex];
+        return swapchain.images.at(swapchain.imageIndex);
     }
 
     inline vk::Semaphore& GetRenderSemaphore(FrameData& frameData)
@@ -55,11 +55,11 @@ namespace Swift::Vulkan::Render
 
     inline void BeginRendering(
         const vk::CommandBuffer commandBuffer,
-        const Swapchain& swapchain,
+        Swapchain& swapchain,
         const bool enableDepth)
     {
         const auto colorAttachment = vk::RenderingAttachmentInfo()
-                                         .setImageView(swapchain.renderImage.imageView)
+                                         .setImageView(GetSwapchainImage(swapchain).imageView)
                                          .setClearValue(vk::ClearColorValue().setFloat32({0.f}))
                                          .setImageLayout(vk::ImageLayout::eColorAttachmentOptimal)
                                          .setLoadOp(vk::AttachmentLoadOp::eLoad)

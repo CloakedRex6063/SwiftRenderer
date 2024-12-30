@@ -23,8 +23,8 @@ add_subdirectory(Shaders)
 add_dependencies(SwiftRender SwiftCompileShaders)
 
 option(SwiftWithExample "Build the example project" OFF)
-option(SwiftImGui "Support Imgui with swift" ON)
-option(SwiftImGuiGLFW "Support GLFW backend for imgui" ON)
+option(SwiftImGui "Support Imgui with swift" OFF)
+option(SwiftImGuiGLFW "Support GLFW backend for imgui" OFF)
 
 if (SwiftWithExample)
     add_subdirectory(Example)
