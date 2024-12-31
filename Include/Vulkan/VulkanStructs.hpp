@@ -1,4 +1,5 @@
 #pragma once
+#include "dds.hpp"
 
 namespace Swift::Vulkan
 {
@@ -79,6 +80,7 @@ namespace Swift::Vulkan
         vk::Format format{};
         VmaAllocation imageAllocation{};
         vk::ImageLayout currentLayout = vk::ImageLayout::eUndefined;
+        std::variant<dds::Image> payload;
 
         operator vk::Image() const { return image; }
 
@@ -100,6 +102,11 @@ namespace Swift::Vulkan
         Image& SetAllocation(const VmaAllocation& imageAllocation)
         {
             this->imageAllocation = imageAllocation;
+            return *this;
+        }
+        Image& SetPayload(const std::variant<dds::Image>& payload)
+        {
+            this->payload = payload;
             return *this;
         }
 

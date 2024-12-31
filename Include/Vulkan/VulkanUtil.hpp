@@ -109,10 +109,9 @@ namespace Swift::Vulkan::Util
         const Context& context,
         vk::CommandBuffer commandBuffer,
         u32 queueIndex,
-        const std::span<std::span<u8>>& imageData,
+        const dds::Image& ddsImage,
         u32 mipLevel,
         bool loadAllMips,
-        vk::Extent3D extent,
         const Image& image);
 
     void CopyBufferToImage(

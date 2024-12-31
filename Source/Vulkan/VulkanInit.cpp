@@ -3,7 +3,10 @@
 #include "Vulkan/VulkanConstants.hpp"
 #include "Vulkan/VulkanStructs.hpp"
 #include "Vulkan/VulkanUtil.hpp"
+#include "dds.hpp"
 #include "vulkan/vulkan_win32.h"
+
+#include <complex.h>
 
 namespace
 {
@@ -295,7 +298,7 @@ namespace
                       .get<vk::PhysicalDeviceVulkan11Features>()
                 : std::get<ShaderVariant>(structureChain).get<vk::PhysicalDeviceVulkan11Features>();
         features11.setShaderDrawParameters(true);
-        
+
         auto& features12 =
             initInfo.bUsePipelines
                 ? std::get<PipelineVariant>(structureChain)
@@ -394,6 +397,26 @@ namespace
     vk::DispatchLoaderDynamic CreateDynamicLoader(const Swift::Vulkan::Context& context)
     {
         return {context.instance, vkGetInstanceProcAddr, context.device, vkGetDeviceProcAddr};
+    }
+
+    vk::ImageView CreateImageView(
+        const Swift::Vulkan::Context& context,
+        const vk::Image image,
+        const vk::Format format,
+        const vk::ImageViewType viewType,
+        const vk::ImageAspectFlags aspectMask,
+        const std::string_view debugName)
+    {
+        const auto viewCreateInfo =
+            vk::ImageViewCreateInfo()
+                .setImage(image)
+                .setFormat(format)
+                .setViewType(viewType)
+                .setSubresourceRange(Swift::Vulkan::Util::GetImageSubresourceRange(aspectMask));
+        const auto [viewResult, imageView] = context.device.createImageView(viewCreateInfo);
+        VK_ASSERT(viewResult, "Failed to create image view");
+        Swift::Vulkan::Util::NameObject(imageView, debugName, context);
+        return imageView;
     }
 
     vk::ShaderCreateInfoEXT CreateShaderExt(
@@ -664,79 +687,51 @@ namespace Swift::Vulkan
         return queue;
     }
 
-    vk::ImageView Init::CreateImageView(
+    Image Init::CreateImage(
         const Context& context,
-        const vk::ImageViewCreateInfo& createInfo,
+        VkImageCreateInfo& imageCreateInfo,
+        VkImageViewCreateInfo& imageViewCreateInfo,
         const std::string_view debugName)
     {
-        auto [result, imageView] = context.device.createImageView(createInfo);
+        constexpr VmaAllocationCreateInfo allocCreateInfo{
+            .usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE,
+            .requiredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+        };
+        VkImage image;
+        VmaAllocation allocation;
+        const auto vkResult = vmaCreateImage(
+            context.allocator,
+            &imageCreateInfo,
+            &allocCreateInfo,
+            &image,
+            &allocation,
+            nullptr);
+        assert(vkResult == VK_SUCCESS);
+        Util::NameObject(
+            static_cast<vk::Image>(image),
+            std::string(debugName) + std::string(" Image"),
+            context);
+
+        imageViewCreateInfo.image = image;
+        auto [result, imageView] = context.device.createImageView(imageViewCreateInfo);
         VK_ASSERT(result, "Failed to create image view");
-        Util::NameObject(imageView, debugName, context);
-        return imageView;
+        Util::NameObject(imageView, std::string(debugName) + std::string(" View"), context);
+
+        return Image()
+            .SetImage(image)
+            .SetAllocation(allocation)
+            .SetFormat(static_cast<vk::Format>(imageCreateInfo.format))
+            .SetView(imageView);
     }
 
-    vk::ImageView Init::CreateImageView(
+    Image Init::CreateImage(
         const Context& context,
-        const vk::Image image,
-        const vk::Format format,
-        const vk::ImageViewType viewType,
-        const vk::ImageAspectFlags aspectMask,
-        const std::string_view debugName)
-    {
-        const auto createInfo =
-            vk::ImageViewCreateInfo()
-                .setImage(image)
-                .setFormat(format)
-                .setViewType(viewType)
-                .setSubresourceRange(Util::GetImageSubresourceRange(aspectMask));
-        const auto [result, imageView] = context.device.createImageView(createInfo);
-        VK_ASSERT(result, "Failed to create image view");
-        Util::NameObject(imageView, debugName, context);
-        return imageView;
-    }
-
-    vk::ImageView Init::CreateColorImageView(
-        const Context& context,
-        const vk::Image image,
-        const vk::Format format,
-        const std::string_view debugName)
-    {
-        const auto imageView = CreateImageView(
-            context,
-            image,
-            format,
-            vk::ImageViewType::e2D,
-            vk::ImageAspectFlagBits::eColor,
-            debugName);
-        return imageView;
-    }
-
-    vk::ImageView Init::CreateDepthImageView(
-        const Context& context,
-        const vk::Image image,
-        const std::string_view debugName)
-    {
-
-        const auto imageView = CreateImageView(
-            context,
-            image,
-            vk::Format::eD32Sfloat,
-            vk::ImageViewType::e2D,
-            vk::ImageAspectFlagBits::eDepth,
-            debugName);
-        return imageView;
-    }
-
-    std::tuple<
-        vk::Image,
-        VmaAllocation>
-    Init::CreateImage(
-        const VmaAllocator& allocator,
-        const vk::Extent3D extent,
         const vk::ImageType imageType,
+        const vk::Extent3D extent,
         const vk::Format format,
         const vk::ImageUsageFlags usage,
-        const u32 mipLevels)
+        const u32 mipLevels,
+        const std::string_view debugName)
     {
         VkImage image;
         VmaAllocation allocation;
@@ -756,27 +751,102 @@ namespace Swift::Vulkan
             .usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE,
             .requiredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
         };
-        const auto result =
-            vmaCreateImage(allocator, &cCreateInfo, &allocCreateInfo, &image, &allocation, nullptr);
+        const auto result = vmaCreateImage(
+            context.allocator,
+            &cCreateInfo,
+            &allocCreateInfo,
+            &image,
+            &allocation,
+            nullptr);
         assert(result == VK_SUCCESS);
-        return {image, allocation};
+
+        vk::ImageAspectFlags aspectMask = vk::ImageAspectFlagBits::eColor;
+        if (usage & vk::ImageUsageFlagBits::eDepthStencilAttachment && usage)
+        {
+            aspectMask = vk::ImageAspectFlagBits::eDepth;
+        }
+
+        auto viewType = vk::ImageViewType::e2D;
+        if (extent.depth > 1)
+        {
+            viewType = vk::ImageViewType::e3D;
+        }
+
+        const auto imageView = CreateImageView(
+            context,
+            image,
+            format,
+            viewType,
+            aspectMask,
+            std::string(debugName) + std::string(" View"));
+
+        return Image()
+            .SetImage(image)
+            .SetAllocation(allocation)
+            .SetFormat(createInfo.format)
+            .SetView(imageView);
     }
 
     std::tuple<
-        vk::Image,
-        VmaAllocation>
-    Init::CreateImage(
+        Image,
+        Buffer>
+    Init::CreateDDSImage(
         const Context& context,
-        const VkImageCreateInfo& info)
+        const Queue transferQueue,
+        const Command transferCommand,
+        const std::filesystem::path& filePath,
+        const int mipLevel,
+        const bool loadAllMips,
+        const std::string_view debugName)
     {
-        constexpr VmaAllocationCreateInfo allocCreateInfo{
-            .usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE,
-            .requiredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-        };
-        VkImage image;
-        VmaAllocation allocation;
-        vmaCreateImage(context.allocator, &info, &allocCreateInfo, &image, &allocation, nullptr);
-        return {image, allocation};
+        dds::Image ddsImage;
+        const auto readResult = dds::readFile(filePath, &ddsImage);
+        assert(readResult == dds::Success);
+
+        auto imageCreateInfo = dds::getVulkanImageCreateInfo(&ddsImage);
+        auto imageViewCreateInfo = dds::getVulkanImageViewCreateInfo(&ddsImage);
+
+        imageCreateInfo.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+        imageCreateInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+        if (!loadAllMips)
+        {
+            imageCreateInfo.mipLevels = 1;
+            imageCreateInfo.extent = Util::GetMipExtent(imageCreateInfo.extent, mipLevel);
+        }
+        if (!loadAllMips)
+        {
+            imageViewCreateInfo.subresourceRange.levelCount = 1;
+        }
+
+        auto image = CreateImage(context, imageCreateInfo, imageViewCreateInfo, debugName)
+                         .SetPayload(ddsImage);
+
+        const auto srcImageBarrier = Util::ImageBarrier(
+            image.currentLayout,
+            vk::ImageLayout::eTransferDstOptimal,
+            image,
+            vk::ImageAspectFlagBits::eColor,
+            loadAllMips ? ddsImage.numMips : 1);
+        Util::PipelineBarrier(transferCommand, srcImageBarrier);
+
+        const auto buffer = Util::UploadToImage(
+            context,
+            transferCommand,
+            transferQueue.index,
+            ddsImage,
+            mipLevel,
+            loadAllMips,
+            image);
+
+        const auto dstImageBarrier = Util::ImageBarrier(
+            image.currentLayout,
+            vk::ImageLayout::eShaderReadOnlyOptimal,
+            image,
+            vk::ImageAspectFlagBits::eColor,
+            loadAllMips ? ddsImage.numMips : 1);
+        Util::PipelineBarrier(transferCommand, dstImageBarrier);
+
+        return {image, buffer};
     }
 
     std::vector<Image> Init::CreateSwapchainImages(
@@ -802,15 +872,12 @@ namespace Swift::Vulkan
         return swapchainImages;
     }
 
-    std::tuple<
-        vk::Buffer,
-        VmaAllocation,
-        VmaAllocationInfo>
-    Init::CreateBuffer(
+    Buffer Init::CreateBuffer(
         const Context& context,
         u32 queueFamilyIndex,
         const vk::DeviceSize size,
-        const vk::BufferUsageFlags bufferUsageFlags)
+        const vk::BufferUsageFlags bufferUsageFlags,
+        const std::string_view debugName)
     {
         const auto props = context.gpu.getProperties();
 
@@ -838,14 +905,17 @@ namespace Swift::Vulkan
         VkBuffer buffer;
         VmaAllocation allocation;
         VmaAllocationInfo info;
-        vmaCreateBuffer(
+        const auto result = vmaCreateBuffer(
             context.allocator,
             &cCreateInfo,
             &allocCreateInfo,
             &buffer,
             &allocation,
             &info);
-        return {buffer, allocation, info};
+        assert(result == VK_SUCCESS);
+
+        Util::NameObject(static_cast<vk::Buffer>(buffer), debugName, context);
+        return Buffer().SetBuffer(buffer).SetAllocation(allocation).SetAllocationInfo(info);
     }
 
     vk::Fence Init::CreateFence(
@@ -1048,13 +1118,13 @@ namespace Swift::Vulkan
             vk::ShaderStageFlagBits::eFragment,
         };
 
+        Util::NameObject(pipelineLayout, debugName, context);
+
         return Shader()
             .SetShaders(shadersExt)
             .SetPipeline(pipeline)
             .SetPipelineLayout(pipelineLayout)
             .SetStageFlags(stageFlags);
-
-        Util::NameObject(pipelineLayout, debugName, context);
     }
 
     Shader Init::CreateComputeShader(
@@ -1087,13 +1157,12 @@ namespace Swift::Vulkan
 
         const auto stageFlags = {vk::ShaderStageFlagBits::eCompute};
 
+        Util::NameObject(pipelineLayout, debugName, context);
+
         return Shader()
             .SetShaders(shadersExt)
             .SetPipeline(pipeline)
             .SetPipelineLayout(pipelineLayout)
             .SetStageFlags(stageFlags);
-
-        Util::NameObject(pipelineLayout, debugName, context);
     }
-
 } // namespace Swift::Vulkan

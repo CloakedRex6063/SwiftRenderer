@@ -42,11 +42,14 @@ namespace Swift
         std::string_view debugName);
     void BindShader(const ShaderObject& shaderObject);
 
-    ImageObject CreateWriteableImage(glm::uvec2 size);
+    ImageObject CreateWriteableImage(
+        glm::uvec2 size,
+        std::string_view debugName);
     ImageObject CreateImageFromFile(
         const std::filesystem::path& filePath,
         int mipLevel,
-        bool loadAllMipMaps);
+        bool loadAllMipMaps,
+        std::string_view debugName);
     void DestroyImage(ImageObject imageObject);
 
     BufferObject CreateBuffer(
@@ -95,8 +98,10 @@ namespace Swift
         u32 x,
         u32 y,
         u32 z);
-
     void PushConstant(
         const void* value,
         u32 size);
+
+    void BeginTransfer();
+    void EndTransfer();
 } // namespace Swift

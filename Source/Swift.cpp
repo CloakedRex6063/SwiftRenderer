@@ -15,6 +15,8 @@
 #define VMA_IMPLEMENTATION
 #include "vk_mem_alloc.h"
 
+#include <SwiftPCH.hpp>
+
 namespace
 {
     using namespace Swift;
@@ -30,6 +32,7 @@ namespace
     // TODO: sampler pool for all types of samplers
     vk::Sampler gLinearSampler;
 
+    std::vector<Vulkan::Buffer> gTransferStagingBuffers;
     std::vector<Vulkan::Buffer> gBuffers;
     std::vector<Vulkan::Shader> gShaders;
     u32 gCurrentShader = 0;
@@ -38,7 +41,7 @@ namespace
     std::vector<Vulkan::FrameData> gFrameData;
     u32 gCurrentFrame = 0;
     Vulkan::FrameData gCurrentFrameData;
-
+    
     InitInfo gInitInfo;
 } // namespace
 
@@ -59,18 +62,14 @@ void Swift::Init(const InitInfo& initInfo)
     gTransferQueue.SetIndex(indices[2]).SetQueue(transferQueue);
 
     constexpr auto depthFormat = vk::Format::eD32Sfloat;
-    auto [depthVkImage, depthAlloc] = Init::CreateImage(
-        gContext.allocator,
-        Util::To3D(initInfo.extent),
+    const auto depthImage = Init::CreateImage(
+        gContext,
         vk::ImageType::e2D,
+        Util::To3D(initInfo.extent),
         depthFormat,
-        vk::ImageUsageFlagBits::eDepthStencilAttachment);
-    const auto depthView = Init::CreateDepthImageView(gContext, depthVkImage, "Depth Image");
-    const auto depthImage = Image()
-                                .SetFormat(depthFormat)
-                                .SetImage(depthVkImage)
-                                .SetAllocation(depthAlloc)
-                                .SetView(depthView);
+        vk::ImageUsageFlagBits::eDepthStencilAttachment,
+        1,
+        "Swapchain Depth");
 
     const auto swapchain =
         Init::CreateSwapchain(gContext, Util::To2D(initInfo.extent), gGraphicsQueue.index);
@@ -190,14 +189,13 @@ void Swift::BeginFrame(const DynamicInfo& dynamicInfo)
     const auto& commandBuffer = Render::GetCommandBuffer(gCurrentFrameData);
     const auto& renderFence = Render::GetRenderFence(gCurrentFrameData);
 
-    Util::WaitFence(gContext, renderFence, 1000000000);
-
 #ifdef SWIFT_IMGUI
     ImGui_ImplVulkan_NewFrame();
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
 #endif
 
+    Util::WaitFence(gContext, renderFence, 1000000000);
     gSwapchain.imageIndex = Render::AcquireNextImage(
         gGraphicsQueue,
         gContext,
@@ -406,7 +404,9 @@ void Swift::DrawIndexedIndirect(
     commandBuffer.drawIndexedIndirect(realBuffer, offset, drawCount, stride);
 }
 
-ImageObject Swift::CreateWriteableImage(const glm::uvec2 size)
+ImageObject Swift::CreateWriteableImage(
+    const glm::uvec2 size,
+    const std::string_view debugName)
 {
     constexpr auto imageUsage = vk::ImageUsageFlagBits::eColorAttachment |
                                 vk::ImageUsageFlagBits::eTransferSrc |
@@ -414,23 +414,20 @@ ImageObject Swift::CreateWriteableImage(const glm::uvec2 size)
                                 vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eSampled;
 
     constexpr auto format = vk::Format::eR16G16B16A16Sfloat;
-    auto [vkImage, allocation] = Init::CreateImage(
-        gContext.allocator,
-        Util::To3D(size),
+    const auto image = Init::CreateImage(
+        gContext,
         vk::ImageType::e2D,
+        Util::To3D(size),
         format,
-        imageUsage);
-
-    const auto view = Init::CreateColorImageView(gContext, vkImage, format, "Render Image");
-    const auto renderImage =
-        Image().SetFormat(format).SetImage(vkImage).SetAllocation(allocation).SetView(view);
-
-    gWriteableImages.emplace_back(renderImage);
+        imageUsage,
+        1,
+        debugName);
+    gWriteableImages.emplace_back(image);
 
     const auto arrayElement = static_cast<u32>(gWriteableImages.size() - 1);
     Util::UpdateDescriptorImage(
         gDescriptor.set,
-        renderImage.imageView,
+        image.imageView,
         gLinearSampler,
         arrayElement,
         gContext);
@@ -440,75 +437,28 @@ ImageObject Swift::CreateWriteableImage(const glm::uvec2 size)
 
 ImageObject Swift::CreateImageFromFile(
     const std::filesystem::path& filePath,
-    int mipLevel,
-    bool loadAllMipMaps)
+    const int mipLevel,
+    const bool loadAllMipMaps,
+    const std::string_view debugName)
 {
-    vk::Extent3D extent;
+    Image image;
+    Buffer staging;
     if (filePath.extension() == ".dds")
     {
-        dds::Image ddsImage;
-        const auto readResult = dds::readFile(filePath, &ddsImage);
-        assert(readResult == dds::Success);
-
-        auto imageCreateInfo = dds::getVulkanImageCreateInfo(&ddsImage);
-        auto imageViewCreateInfo = dds::getVulkanImageViewCreateInfo(&ddsImage);
-
-        imageCreateInfo.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-        imageCreateInfo.samples = VK_SAMPLE_COUNT_1_BIT;
-        if (!loadAllMipMaps)
-        {
-            imageCreateInfo.mipLevels = 1;
-            imageCreateInfo.extent = Util::GetMipExtent(imageCreateInfo.extent, mipLevel);
-        }
-
-        auto [vulkanImage, alloc] = Init::CreateImage(gContext, imageCreateInfo);
-        Util::NameObject(vulkanImage, "Image", gContext);
-        imageViewCreateInfo.image = vulkanImage;
-        if (!loadAllMipMaps)
-        {
-            imageViewCreateInfo.subresourceRange.levelCount = 1;
-        }
-        const auto imageView = Init::CreateImageView(gContext, imageViewCreateInfo);
-
-        auto image = Image()
-                         .SetImage(vulkanImage)
-                         .SetAllocation(alloc)
-                         .SetView(imageView)
-                         .SetFormat(static_cast<vk::Format>(imageViewCreateInfo.format));
-        gSamplerImages.emplace_back(image);
-
-        // TODO: Replace with a separate transfer command
-        Util::BeginOneTimeCommand(gTransferCommand);
-        extent = imageCreateInfo.extent;
-        const auto imageBarrier = Util::ImageBarrier(
-            image.currentLayout,
-            vk::ImageLayout::eTransferDstOptimal,
-            image,
-            vk::ImageAspectFlagBits::eColor,
-            loadAllMipMaps ? ddsImage.numMips : 1);
-        Util::PipelineBarrier(gTransferCommand, imageBarrier);
-        const auto buffer = Util::UploadToImage(
+        std::tie(image, staging) = Init::CreateDDSImage(
             gContext,
+            gTransferQueue,
             gTransferCommand,
-            gTransferQueue.index,
-            ddsImage.mipmaps,
+            filePath,
             mipLevel,
             loadAllMipMaps,
-            extent,
-            image);
-        const auto dstImageBarrier = Util::ImageBarrier(
-            image.currentLayout,
-            vk::ImageLayout::eShaderReadOnlyOptimal,
-            image,
-            vk::ImageAspectFlagBits::eColor,
-            loadAllMipMaps ? ddsImage.numMips : 1);
-        Util::PipelineBarrier(gTransferCommand, dstImageBarrier);
-        Util::EndCommand(gTransferCommand);
-        Util::SubmitQueueHost(gTransferQueue, gTransferCommand, gTransferFence);
-        Util::WaitFence(gContext, gTransferFence);
-        Util::ResetFence(gContext, gTransferFence);
-        buffer.Destroy(gContext);
+            debugName);
     }
+    gTransferStagingBuffers.emplace_back(staging);
+    auto& ddsImage = std::get<dds::Image>(image.payload);
+    auto extent = vk::Extent3D(ddsImage.width, ddsImage.height, ddsImage.depth);
+    
+    gSamplerImages.emplace_back(image);
     const auto arrayElement = static_cast<u32>(gSamplerImages.size() - 1);
     Util::UpdateDescriptorSampler(
         gDescriptor.set,
@@ -554,11 +504,8 @@ BufferObject Swift::CreateBuffer(
         break;
     }
 
-    const auto [vulkanBuffer, allocation, info] =
-        Init::CreateBuffer(gContext, gGraphicsQueue.index, size, bufferUsageFlags);
-    Util::NameObject(vulkanBuffer, debugName, gContext);
     const auto buffer =
-        Buffer().SetBuffer(vulkanBuffer).SetAllocation(allocation).SetAllocationInfo(info);
+        Init::CreateBuffer(gContext, gGraphicsQueue.index, size, bufferUsageFlags, debugName);
     gBuffers.emplace_back(buffer);
     const auto index = static_cast<u32>(gBuffers.size() - 1);
     return BufferObject().SetIndex(index).SetSize(size);
@@ -807,4 +754,21 @@ void Swift::PushConstant(
     }
 
     commandBuffer.pushConstants(pipelineLayout, pushStageFlags, 0, size, value);
+}
+
+void Swift::BeginTransfer()
+{
+    Util::BeginOneTimeCommand(gTransferCommand);
+}
+
+void Swift::EndTransfer()
+{
+    Util::EndCommand(gTransferCommand);
+    Util::SubmitQueueHost(gTransferQueue, gTransferCommand, gTransferFence);
+    Util::WaitFence(gContext, gTransferFence);
+    Util::ResetFence(gContext, gTransferFence);
+    for (const auto& buffer : gTransferStagingBuffers)
+    {
+        buffer.Destroy(gContext);
+    }
 }

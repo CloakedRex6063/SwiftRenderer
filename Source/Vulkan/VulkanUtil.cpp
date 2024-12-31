@@ -78,25 +78,15 @@ namespace Swift::Vulkan
         swapchain.Destroy(context);
 
         constexpr auto depthFormat = vk::Format::eD32Sfloat;
-        auto [depthVkImage, depthAlloc] = Init::CreateImage(
-            context.allocator,
-            vk::Extent3D(extent, 1),
-            vk::ImageType::e2D,
-            depthFormat,
-            vk::ImageUsageFlagBits::eDepthStencilAttachment);
-
-        const auto depthView = Init::CreateImageView(
+        const auto depthImage = Init::CreateImage(
             context,
-            depthVkImage,
+            vk::ImageType::e2D,
+            vk::Extent3D(extent, 1),
             depthFormat,
-            vk::ImageViewType::e2D,
-            vk::ImageAspectFlagBits::eDepth,
-            "Depth Image");
-        const auto depthImage = Image()
-                                    .SetFormat(depthFormat)
-                                    .SetImage(depthVkImage)
-                                    .SetAllocation(depthAlloc)
-                                    .SetView(depthView);
+            vk::ImageUsageFlagBits::eDepthStencilAttachment,
+            1,
+            "Swapchain Depth");
+
         swapchain.SetSwapchain(Init::CreateSwapchain(context, extent, graphicsFamily))
             .SetDepthImage(depthImage)
             .SetImages(Init::CreateSwapchainImages(context, swapchain))
@@ -244,51 +234,67 @@ namespace Swift::Vulkan
         const Context& context,
         const vk::CommandBuffer commandBuffer,
         const u32 queueIndex,
-        const std::span<std::span<u8>>& imageData,
+        const dds::Image& ddsImage,
         const u32 mipLevel,
         const bool loadAllMips,
-        const vk::Extent3D extent,
         const Image& image)
     {
-        const auto maxMips = imageData.size();
-        u32 imageSize = 0;
-        for (u32 i = 0; i < maxMips; ++i)
+        u32 start;
+        u32 imageSize;
+        if (loadAllMips)
         {
-            imageSize += imageData[i].size();
+            start = ddsImage.mipmapOffsets[0];
+            imageSize = ddsImage.fileSize - start;
         }
-        if (!loadAllMips)
+        else
         {
-            imageSize = imageData[mipLevel].size();
+            start = ddsImage.mipmapOffsets[mipLevel];
+            imageSize = ddsImage.mipmapOffsets[mipLevel + 1] - start;
+            if (mipLevel + 1 > ddsImage.numMips - 1)
+            {
+                imageSize = ddsImage.fileSize - start;
+            }
         }
-        auto [staging, alloc, allocInfo] = Init::CreateBuffer(
+
+        const auto buffer = Init::CreateBuffer(
             context,
             queueIndex,
             imageSize,
-            vk::BufferUsageFlagBits::eTransferSrc);
-        const auto buffer =
-            Buffer().SetBuffer(staging).SetAllocation(alloc).SetAllocationInfo(allocInfo);
+            vk::BufferUsageFlagBits::eTransferSrc,
+            "staging");
 
+        std::ifstream file(ddsImage.filepath, std::ios::binary);
+        file.seekg(start, std::ios::beg);
+
+        const auto mapped = MapBuffer(context, buffer);
         if (loadAllMips)
         {
             u32 offset = 0;
-            for (u32 i = 0; i < maxMips; ++i)
+            for (u32 i = 0; i < ddsImage.numMips; i++)
             {
-                UploadToBuffer(context, imageData[i].data(), buffer, offset, imageData[i].size());
-                offset += imageData[i].size();
+                u32 mipSize;
+                if (i == ddsImage.numMips - 1)
+                {
+                    mipSize = ddsImage.fileSize - ddsImage.mipmapOffsets[i];
+                }
+                else
+                {
+                    mipSize = ddsImage.mipmapOffsets[i + 1] - ddsImage.mipmapOffsets[i];
+                }
+
+                file.read(static_cast<char*>(mapped) + offset, mipSize);
+                offset += mipSize;
                 offset = (offset + 15) & ~15;
             }
         }
         else
         {
-            UploadToBuffer(
-                context,
-                imageData[mipLevel].data(),
-                buffer,
-                0,
-                imageData[mipLevel].size());
+            file.read(static_cast<char*>(mapped), imageSize);
         }
+        UnmapBuffer(context, buffer);
 
-        CopyBufferToImage(commandBuffer, staging, extent, maxMips, loadAllMips, image);
+        const auto extent = vk::Extent3D(ddsImage.width, ddsImage.height, ddsImage.depth);
+        CopyBufferToImage(commandBuffer, buffer, extent, ddsImage.numMips, loadAllMips, image);
         return buffer;
     }
 

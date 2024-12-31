@@ -1,7 +1,6 @@
 #pragma once
+#include "SwiftStructs.hpp"
 #include "VulkanStructs.hpp"
-
-#include <SwiftStructs.hpp>
 
 namespace Swift::Vulkan::Init
 {
@@ -17,56 +16,31 @@ namespace Swift::Vulkan::Init
         u32 queueFamilyIndex,
         std::string_view debugName);
 
-    vk::ImageView CreateImageView(
+    Image CreateImage(
         const Context& context,
-        const vk::ImageViewCreateInfo& createInfo,
-        std::string_view debugName = "Image View");
-    vk::ImageView CreateImageView(
-        const Context& context,
-        vk::Image image,
-        vk::Format format,
-        vk::ImageViewType viewType,
-        vk::ImageAspectFlags aspectMask,
-        std::string_view debugName = "Image View");
-    vk::ImageView CreateColorImageView(
-        const Context& context,
-        vk::Image image,
-        vk::Format format,
-        std::string_view debugName);
-    vk::ImageView CreateDepthImageView(
-        const Context& context,
-        vk::Image image,
+        VkImageCreateInfo& imageCreateInfo,
+        VkImageViewCreateInfo& imageViewCreateInfo,
         std::string_view debugName);
 
-    std::tuple<
-        vk::Image,
-        VmaAllocation>
-    CreateImage(
-        const VmaAllocator& allocator,
-        vk::Extent3D extent,
+    Image CreateImage(
+        const Context& context,
         vk::ImageType imageType,
+        vk::Extent3D extent,
         vk::Format format,
         vk::ImageUsageFlags usage,
-        u32 mipLevels = 1);
-    std::tuple<
-        vk::Image,
-        VmaAllocation>
-    CreateImage(
-        const Context& context,
-        const VkImageCreateInfo& info);
+        u32 mipLevels,
+        std::string_view debugName);
+
     std::vector<Image> CreateSwapchainImages(
         const Context& context,
         const Swapchain& swapchain);
 
-    std::tuple<
-        vk::Buffer,
-        VmaAllocation,
-        VmaAllocationInfo>
-    CreateBuffer(
+    Buffer CreateBuffer(
         const Context& context,
         u32 queueFamilyIndex,
         vk::DeviceSize size,
-        vk::BufferUsageFlags bufferUsageFlags);
+        vk::BufferUsageFlags bufferUsageFlags,
+        std::string_view debugName);
 
     vk::Fence CreateFence(
         const Context& context,
@@ -111,5 +85,14 @@ namespace Swift::Vulkan::Init
         bool bUsePipeline,
         u32 pushConstantSize,
         std::string_view computePath,
+        std::string_view debugName);
+
+    std::tuple<Image, Buffer> CreateDDSImage(
+        const Context& context,
+        Queue transferQueue,
+        Command transferCommand,
+        const std::filesystem::path& filePath,
+        int mipLevel,
+        bool loadAllMips,
         std::string_view debugName);
 } // namespace Swift::Vulkan::Init
