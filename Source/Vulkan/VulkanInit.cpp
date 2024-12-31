@@ -982,7 +982,7 @@ namespace Swift::Vulkan
                                                .setCompareEnable(false)
                                                .setMipmapMode(vk::SamplerMipmapMode::eLinear)
                                                .setMinLod(0)
-                                               .setMaxLod(50);
+                                               .setMaxLod(13);
         const auto [result, sampler] = device.createSampler(samplerCreateInfo);
         VK_ASSERT(result, "Failed to create sampler!");
         return sampler;

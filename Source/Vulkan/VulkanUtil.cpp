@@ -267,33 +267,14 @@ namespace Swift::Vulkan
         file.seekg(start, std::ios::beg);
 
         const auto mapped = MapBuffer(context, buffer);
-        if (loadAllMips)
-        {
-            u32 offset = 0;
-            for (u32 i = 0; i < ddsImage.numMips; i++)
-            {
-                u32 mipSize;
-                if (i == ddsImage.numMips - 1)
-                {
-                    mipSize = ddsImage.fileSize - ddsImage.mipmapOffsets[i];
-                }
-                else
-                {
-                    mipSize = ddsImage.mipmapOffsets[i + 1] - ddsImage.mipmapOffsets[i];
-                }
-
-                file.read(static_cast<char*>(mapped) + offset, mipSize);
-                offset += mipSize;
-                offset = (offset + 15) & ~15;
-            }
-        }
-        else
-        {
-            file.read(static_cast<char*>(mapped), imageSize);
-        }
+        file.read(static_cast<char*>(mapped), imageSize);
         UnmapBuffer(context, buffer);
 
-        const auto extent = vk::Extent3D(ddsImage.width, ddsImage.height, ddsImage.depth);
+        auto extent = vk::Extent3D(ddsImage.width, ddsImage.height, ddsImage.depth);
+        if (!loadAllMips)
+        {
+            extent = Util::GetMipExtent(extent, mipLevel);
+        }
         CopyBufferToImage(commandBuffer, buffer, extent, ddsImage.numMips, loadAllMips, image);
         return buffer;
     }
