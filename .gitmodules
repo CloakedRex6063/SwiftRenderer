@@ -10,3 +10,7 @@
 	path = External/ImGui
 	url = https://github.com/ocornut/imgui
 	branch = docking
+[submodule "External/DDS"]
+	path = External/DDS
+	url = https://github.com/CloakedRex6063/DDS-Utility
+	branch = master
