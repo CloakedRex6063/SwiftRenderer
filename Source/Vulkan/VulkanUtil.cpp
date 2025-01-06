@@ -85,6 +85,7 @@ namespace Swift::Vulkan
             depthFormat,
             vk::ImageUsageFlagBits::eDepthStencilAttachment,
             1,
+            {},
             "Swapchain Depth");
 
         swapchain.SetSwapchain(Init::CreateSwapchain(context, extent, graphicsFamily))
@@ -171,12 +172,35 @@ namespace Swift::Vulkan
         device.updateDescriptorSets(samplerWriteInfo, {});
     }
 
+    void Util::UpdateDescriptorSamplerCube(
+        const vk::DescriptorSet set,
+        const vk::ImageView imageView,
+        const vk::Sampler sampler,
+        const u32 arrayElement,
+        const vk::Device& device)
+    {
+        const auto imageInfo = vk::DescriptorImageInfo()
+                                   .setImageLayout(vk::ImageLayout::eGeneral)
+                                   .setImageView(imageView)
+                                   .setSampler(sampler);
+        const auto samplerWriteInfo =
+            vk::WriteDescriptorSet()
+                .setDstSet(set)
+                .setDstBinding(Constants::CubeSamplerBinding)
+                .setDstArrayElement(arrayElement)
+                .setDescriptorCount(1)
+                .setDescriptorType(vk::DescriptorType::eCombinedImageSampler)
+                .setImageInfo(imageInfo);
+        device.updateDescriptorSets(samplerWriteInfo, {});
+    }
+
     vk::ImageMemoryBarrier2 Util::ImageBarrier(
-        const vk::ImageLayout oldLayout,
-        const vk::ImageLayout newLayout,
+        vk::ImageLayout oldLayout,
+        vk::ImageLayout newLayout,
         Image& image,
-        const vk::ImageAspectFlags flags,
-        const u32 mipCount)
+        vk::ImageAspectFlags flags,
+        u32 mipCount,
+        u32 arrayLayers)
     {
         const auto imageBarrier =
             vk::ImageMemoryBarrier2()
@@ -187,7 +211,7 @@ namespace Swift::Vulkan
                 .setDstStageMask(vk::PipelineStageFlagBits2::eAllCommands)
                 .setOldLayout(oldLayout)
                 .setNewLayout(newLayout)
-                .setSubresourceRange(GetImageSubresourceRange(flags, mipCount))
+                .setSubresourceRange(GetImageSubresourceRange(flags, mipCount, arrayLayers))
                 .setImage(image);
         image.currentLayout = newLayout;
         return imageBarrier;
@@ -234,7 +258,8 @@ namespace Swift::Vulkan
         const Context& context,
         const vk::CommandBuffer commandBuffer,
         const u32 queueIndex,
-        const dds::Image& ddsImage,
+        const dds::Header& ddsImage,
+        const std::string_view filePath,
         const u32 mipLevel,
         const bool loadAllMips,
         const Image& image)
@@ -243,16 +268,21 @@ namespace Swift::Vulkan
         u32 imageSize;
         if (loadAllMips)
         {
-            start = ddsImage.mipmapOffsets[0];
-            imageSize = ddsImage.fileSize - start;
+            start = ddsImage.DataOffset();
+            imageSize = ddsImage.DataSize();
         }
         else
         {
-            start = ddsImage.mipmapOffsets[mipLevel];
-            imageSize = ddsImage.mipmapOffsets[mipLevel + 1] - start;
-            if (mipLevel + 1 > ddsImage.numMips - 1)
+            start = ddsImage.MipOffset(mipLevel);
+
+            if (mipLevel + 1 > ddsImage.MipLevels() - 1)
             {
-                imageSize = ddsImage.fileSize - start;
+                imageSize = ddsImage.DataSize() + ddsImage.DataOffset() - start;
+            }
+            else
+            {
+                imageSize = ddsImage.MipOffset(mipLevel + 1) - start;
+                imageSize *= ddsImage.ArraySize();
             }
         }
 
@@ -263,57 +293,65 @@ namespace Swift::Vulkan
             vk::BufferUsageFlagBits::eTransferSrc,
             "staging");
 
-        std::ifstream file(ddsImage.filepath, std::ios::binary);
+        std::ifstream file((filePath.data()), std::ios::binary);
         file.seekg(start, std::ios::beg);
 
         const auto mapped = MapBuffer(context, buffer);
         file.read(static_cast<char*>(mapped), imageSize);
         UnmapBuffer(context, buffer);
-
-        auto extent = vk::Extent3D(ddsImage.width, ddsImage.height, ddsImage.depth);
-        if (!loadAllMips)
-        {
-            extent = Util::GetMipExtent(extent, mipLevel);
-        }
-        CopyBufferToImage(commandBuffer, buffer, extent, ddsImage.numMips, loadAllMips, image);
+        
+        CopyBufferToImage(commandBuffer, buffer, ddsImage, mipLevel, loadAllMips, image);
         return buffer;
     }
 
     void Util::CopyBufferToImage(
         const vk::CommandBuffer commandBuffer,
         const vk::Buffer buffer,
-        const vk::Extent3D extent,
-        const u32 maxMips,
+        const dds::Header& ddsImage,
+        const u32 mipLevel,
         const bool loadAllMips,
         const vk::Image image)
     {
         std::vector<vk::BufferImageCopy2> copyRegions;
         if (loadAllMips)
         {
+            const auto extent = ddsImage.GetVulkanExtent();
             u32 offset = 0;
-            for (int i = 0; i < maxMips; i++)
+            for (u32 layer = 0; layer < ddsImage.ArraySize(); layer++)
             {
-                vk::Extent3D mipExtent = {
-                    std::max(1u, extent.width >> i),
-                    std::max(1u, extent.height >> i),
-                    std::max(1u, extent.depth >> i)};
-                const auto bufferImageCopy =
-                    vk::BufferImageCopy2()
-                        .setImageExtent(mipExtent)
-                        .setImageSubresource(
-                            GetImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, i))
-                        .setBufferOffset(offset);
-                copyRegions.emplace_back(bufferImageCopy);
-                offset += mipExtent.width * mipExtent.height * mipExtent.depth;
-                offset = (offset + 15) & ~15;
+                for (int i = 0; i < ddsImage.MipLevels(); i++)
+                {
+                    vk::Extent3D mipExtent = {
+                        std::max(1u, extent.width >> i),
+                        std::max(1u, extent.height >> i),
+                        std::max(1u, extent.depth >> i)};
+                    const auto bufferImageCopy = vk::BufferImageCopy2()
+                                                     .setImageExtent(mipExtent)
+                                                     .setImageSubresource(GetImageSubresourceLayers(
+                                                         vk::ImageAspectFlagBits::eColor,
+                                                         i,
+                                                         1,
+                                                         layer))
+                                                     .setBufferOffset(offset);
+                    copyRegions.emplace_back(bufferImageCopy);
+                    offset += ddsImage.MipSize(i);
+                }
             }
         }
         else
         {
-            const auto bufferImageCopy =
-                vk::BufferImageCopy2().setImageExtent(extent).setImageSubresource(
-                    GetImageSubresourceLayers(vk::ImageAspectFlagBits::eColor));
-            copyRegions.emplace_back(bufferImageCopy);
+            for (int i = 0; i < ddsImage.ArraySize(); i++)
+            {
+                const auto extent = Util::GetMipExtent(ddsImage.GetVulkanExtent(), mipLevel);
+                const auto bufferImageCopy =
+                    vk::BufferImageCopy2().setImageExtent(extent).setImageSubresource(GetImageSubresourceLayers(
+                                                             vk::ImageAspectFlagBits::eColor,
+                                                             0,
+                                                             1,
+                                                             i));
+                copyRegions.emplace_back(bufferImageCopy);
+            }
+
         }
         const auto bufferToImageInfo = vk::CopyBufferToImageInfo2()
                                            .setSrcBuffer(buffer)

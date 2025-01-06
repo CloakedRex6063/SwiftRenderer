@@ -1,4 +1,5 @@
 #include "Vulkan/VulkanInit.hpp"
+#include "../../../STBI/Include/stb_image.h"
 #include "Utils/FileIO.hpp"
 #include "Vulkan/VulkanConstants.hpp"
 #include "Vulkan/VulkanStructs.hpp"
@@ -6,6 +7,8 @@
 #include "dds.hpp"
 #include "vulkan/vulkan_win32.h"
 
+#include <Swift.hpp>
+#include <Vulkan/VulkanRender.hpp>
 #include <complex.h>
 
 namespace
@@ -297,7 +300,7 @@ namespace
                 ? std::get<PipelineVariant>(structureChain)
                       .get<vk::PhysicalDeviceVulkan11Features>()
                 : std::get<ShaderVariant>(structureChain).get<vk::PhysicalDeviceVulkan11Features>();
-        features11.setShaderDrawParameters(true);
+        features11.setShaderDrawParameters(true).setMultiview(true);
 
         auto& features12 =
             initInfo.bUsePipelines
@@ -405,14 +408,26 @@ namespace
         const vk::Format format,
         const vk::ImageViewType viewType,
         const vk::ImageAspectFlags aspectMask,
+        const int baseLayer,
         const std::string_view debugName)
     {
-        const auto viewCreateInfo =
+        auto viewCreateInfo =
             vk::ImageViewCreateInfo()
                 .setImage(image)
                 .setFormat(format)
                 .setViewType(viewType)
                 .setSubresourceRange(Swift::Vulkan::Util::GetImageSubresourceRange(aspectMask));
+
+        if (baseLayer > 0)
+        {
+            viewCreateInfo.subresourceRange.setBaseArrayLayer(baseLayer);
+        }
+
+        if (viewType == vk::ImageViewType::eCube)
+        {
+            viewCreateInfo.subresourceRange.setLayerCount(6);
+        }
+
         const auto [viewResult, imageView] = context.device.createImageView(viewCreateInfo);
         VK_ASSERT(viewResult, "Failed to create image view");
         Swift::Vulkan::Util::NameObject(imageView, debugName, context);
@@ -566,10 +581,8 @@ namespace
                 .setSrcColorBlendFactor(vk::BlendFactor::eOne)
                 .setDstAlphaBlendFactor(vk::BlendFactor::eZero)
                 .setDstColorBlendFactor(vk::BlendFactor::eOneMinusSrcAlpha);
-        const auto colorBlendStateCreateInfo = vk::PipelineColorBlendStateCreateInfo()
-                                                   .setLogicOpEnable(false)
-                                                   .setLogicOp(vk::LogicOp::eCopy)
-                                                   .setAttachments(colorBlendAttachmentState);
+        const auto colorBlendStateCreateInfo =
+            vk::PipelineColorBlendStateCreateInfo().setAttachments(colorBlendAttachmentState);
 
         auto colorFormat = vk::Format::eR16G16B16A16Sfloat;
         const auto renderCreateInfo = vk::PipelineRenderingCreateInfo()
@@ -731,21 +744,24 @@ namespace Swift::Vulkan
         const vk::Format format,
         const vk::ImageUsageFlags usage,
         const u32 mipLevels,
+        const vk::ImageCreateFlags flags,
         const std::string_view debugName)
     {
         VkImage image;
         VmaAllocation allocation;
-        const auto createInfo = vk::ImageCreateInfo()
-                                    .setExtent(extent)
-                                    .setImageType(imageType)
-                                    .setMipLevels(mipLevels)
-                                    .setArrayLayers(1)
-                                    .setFormat(format)
-                                    .setTiling(vk::ImageTiling::eOptimal)
-                                    .setInitialLayout(vk::ImageLayout::eUndefined)
-                                    .setSharingMode(vk::SharingMode::eExclusive)
-                                    .setSamples(vk::SampleCountFlagBits::e1)
-                                    .setUsage(usage);
+        const auto createInfo =
+            vk::ImageCreateInfo()
+                .setFlags(flags)
+                .setExtent(extent)
+                .setImageType(imageType)
+                .setMipLevels(mipLevels)
+                .setArrayLayers(flags & vk::ImageCreateFlagBits::eCubeCompatible ? 6 : 1)
+                .setFormat(format)
+                .setTiling(vk::ImageTiling::eOptimal)
+                .setInitialLayout(vk::ImageLayout::eUndefined)
+                .setSharingMode(vk::SharingMode::eExclusive)
+                .setSamples(vk::SampleCountFlagBits::e1)
+                .setUsage(usage);
         const auto cCreateInfo = static_cast<VkImageCreateInfo>(createInfo);
         constexpr VmaAllocationCreateInfo allocCreateInfo{
             .usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE,
@@ -759,6 +775,11 @@ namespace Swift::Vulkan
             &allocation,
             nullptr);
         assert(result == VK_SUCCESS);
+
+        Util::NameObject(
+            static_cast<vk::Image>(image),
+            std::string(debugName) + std::string(" Image"),
+            context);
 
         vk::ImageAspectFlags aspectMask = vk::ImageAspectFlagBits::eColor;
         if (usage & vk::ImageUsageFlagBits::eDepthStencilAttachment && usage)
@@ -778,6 +799,7 @@ namespace Swift::Vulkan
             format,
             viewType,
             aspectMask,
+            0,
             std::string(debugName) + std::string(" View"));
 
         return Image()
@@ -799,41 +821,39 @@ namespace Swift::Vulkan
         const bool loadAllMips,
         const std::string_view debugName)
     {
-        dds::Image ddsImage;
-        const auto readResult = dds::readFile(filePath, &ddsImage);
-        assert(readResult == dds::Success);
+        auto stream = std::ifstream(filePath, std::ios::binary | std::ios::in);
+        std::vector<char> data(sizeof(dds::Header) / sizeof(char));
+        stream.read(data.data(), sizeof(dds::Header) / sizeof(char));
+        dds::Header header = dds::ReadHeader(data.data(), sizeof(dds::Header));
 
-        auto imageCreateInfo = dds::getVulkanImageCreateInfo(&ddsImage);
-        auto imageViewCreateInfo = dds::getVulkanImageViewCreateInfo(&ddsImage);
-
-        imageCreateInfo.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-        imageCreateInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+        auto imageCreateInfo = header.GetVulkanImageCreateInfo(
+            vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst);
+        auto imageViewCreateInfo = header.GetVulkanImageViewCreateInfo();
+        
         if (!loadAllMips)
         {
             imageCreateInfo.mipLevels = 1;
             imageCreateInfo.extent = Util::GetMipExtent(imageCreateInfo.extent, mipLevel);
-        }
-        if (!loadAllMips)
-        {
             imageViewCreateInfo.subresourceRange.levelCount = 1;
         }
 
-        auto image = CreateImage(context, imageCreateInfo, imageViewCreateInfo, debugName)
-                         .SetPayload(ddsImage);
+        auto image = CreateImage(context, imageCreateInfo, imageViewCreateInfo, debugName);
 
         const auto srcImageBarrier = Util::ImageBarrier(
             image.currentLayout,
             vk::ImageLayout::eTransferDstOptimal,
             image,
             vk::ImageAspectFlagBits::eColor,
-            loadAllMips ? ddsImage.numMips : 1);
+            loadAllMips ? header.MipLevels() : 1,
+            imageCreateInfo.arrayLayers);
         Util::PipelineBarrier(transferCommand, srcImageBarrier);
 
         const auto buffer = Util::UploadToImage(
             context,
             transferCommand,
             transferQueue.index,
-            ddsImage,
+            header,
+            filePath.string(),
             mipLevel,
             loadAllMips,
             image);
@@ -843,7 +863,8 @@ namespace Swift::Vulkan
             vk::ImageLayout::eShaderReadOnlyOptimal,
             image,
             vk::ImageAspectFlagBits::eColor,
-            loadAllMips ? ddsImage.numMips : 1);
+            loadAllMips ? header.MipLevels() : 1,
+            imageCreateInfo.arrayLayers);
         Util::PipelineBarrier(transferCommand, dstImageBarrier);
 
         return {image, buffer};
@@ -865,6 +886,7 @@ namespace Swift::Vulkan
                 format.format,
                 vk::ImageViewType::e2D,
                 vk::ImageAspectFlagBits::eColor,
+                0,
                 "Swapchain Image View");
             auto newImage = Image().SetImage(image).SetView(imageView).SetFormat(format.format);
             swapchainImages.emplace_back(newImage);
@@ -970,19 +992,20 @@ namespace Swift::Vulkan
 
     vk::Sampler Init::CreateSampler(const vk::Device device)
     {
-        constexpr auto samplerCreateInfo = vk::SamplerCreateInfo()
-                                               .setMagFilter(vk::Filter::eLinear)
-                                               .setMinFilter(vk::Filter::eLinear)
-                                               .setAddressModeU(vk::SamplerAddressMode::eRepeat)
-                                               .setAddressModeV(vk::SamplerAddressMode::eRepeat)
-                                               .setAddressModeW(vk::SamplerAddressMode::eRepeat)
-                                               .setBorderColor(vk::BorderColor::eIntOpaqueBlack)
-                                               .setUnnormalizedCoordinates(false)
-                                               .setCompareOp(vk::CompareOp::eAlways)
-                                               .setCompareEnable(false)
-                                               .setMipmapMode(vk::SamplerMipmapMode::eLinear)
-                                               .setMinLod(0)
-                                               .setMaxLod(13);
+        constexpr auto samplerCreateInfo =
+            vk::SamplerCreateInfo()
+                .setMagFilter(vk::Filter::eLinear)
+                .setMinFilter(vk::Filter::eLinear)
+                .setAddressModeU(vk::SamplerAddressMode::eClampToEdge)
+                .setAddressModeV(vk::SamplerAddressMode::eClampToEdge)
+                .setAddressModeW(vk::SamplerAddressMode::eClampToEdge)
+                .setBorderColor(vk::BorderColor::eIntOpaqueBlack)
+                .setUnnormalizedCoordinates(false)
+                .setCompareOp(vk::CompareOp::eAlways)
+                .setCompareEnable(false)
+                .setMipmapMode(vk::SamplerMipmapMode::eLinear)
+                .setMinLod(0)
+                .setMaxLod(13);
         const auto [result, sampler] = device.createSampler(samplerCreateInfo);
         VK_ASSERT(result, "Failed to create sampler!");
         return sampler;
@@ -1010,7 +1033,13 @@ namespace Swift::Vulkan
                 .setBinding(Constants::ImageBinding)
                 .setDescriptorCount(Constants::MaxImageDescriptors)
                 .setDescriptorType(vk::DescriptorType::eStorageImage)
-                .setStageFlags(vk::ShaderStageFlagBits::eAll)};
+                .setStageFlags(vk::ShaderStageFlagBits::eAll),
+            vk::DescriptorSetLayoutBinding()
+                .setBinding(Constants::CubeSamplerBinding)
+                .setDescriptorCount(Constants::MaxCubeSamplerDescriptors)
+                .setDescriptorType(vk::DescriptorType::eCombinedImageSampler)
+                .setStageFlags(vk::ShaderStageFlagBits::eAll),
+        };
 
         constexpr auto flags = vk::DescriptorBindingFlagBits::ePartiallyBound |
                                vk::DescriptorBindingFlagBits::eUpdateAfterBind;
@@ -1047,6 +1076,9 @@ namespace Swift::Vulkan
                 vk::DescriptorPoolSize()
                     .setDescriptorCount(Constants::MaxImageDescriptors)
                     .setType(vk::DescriptorType::eStorageImage),
+                vk::DescriptorPoolSize()
+                    .setDescriptorCount(Constants::MaxCubeSamplerDescriptors)
+                    .setType(vk::DescriptorType::eCombinedImageSampler),
             };
             const auto createInfo =
                 vk::DescriptorPoolCreateInfo()

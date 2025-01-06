@@ -14,6 +14,9 @@ namespace Swift
 
     void ShowDebugStats();
 
+    void SetCullMode(const CullMode& cullMode);
+    void SetDepthCompareOp(DepthCompareOp depthCompareOp);
+
     void Draw(
         u32 vertexCount,
         u32 instanceCount,
@@ -49,6 +52,14 @@ namespace Swift
         const std::filesystem::path& filePath,
         int mipLevel,
         bool loadAllMipMaps,
+        std::string_view debugName);
+    ImageObject CreateImageFromFileQueued(
+        const std::filesystem::path& filePath,
+        int mipLevel,
+        bool loadAllMipMaps,
+        std::string_view debugName);
+    ImageObject CreateCubemapFromFile(
+        const std::filesystem::path& filePath,
         std::string_view debugName);
     void DestroyImage(ImageObject imageObject);
 

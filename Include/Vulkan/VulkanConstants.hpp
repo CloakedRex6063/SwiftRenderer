@@ -10,4 +10,6 @@ namespace Swift::Vulkan::Constants
     constexpr u8 StorageBinding = 2;
     constexpr u16 MaxImageDescriptors = std::numeric_limits<u16>::max();
     constexpr u8 ImageBinding = 3;
-};
+    constexpr u16 MaxCubeSamplerDescriptors = std::numeric_limits<u16>::max();
+    constexpr u8 CubeSamplerBinding = 4;
+}

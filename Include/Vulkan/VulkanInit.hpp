@@ -29,6 +29,7 @@ namespace Swift::Vulkan::Init
         vk::Format format,
         vk::ImageUsageFlags usage,
         u32 mipLevels,
+        vk::ImageCreateFlags flags,
         std::string_view debugName);
 
     std::vector<Image> CreateSwapchainImages(
@@ -87,12 +88,36 @@ namespace Swift::Vulkan::Init
         std::string_view computePath,
         std::string_view debugName);
 
-    std::tuple<Image, Buffer> CreateDDSImage(
+    std::tuple<
+        Image,
+        Buffer>
+    CreateDDSImage(
         const Context& context,
         Queue transferQueue,
         Command transferCommand,
         const std::filesystem::path& filePath,
         int mipLevel,
         bool loadAllMips,
+        std::string_view debugName);
+
+    std::tuple<
+        Image,
+        Buffer>
+    CreateDDSEnvironmentMap(
+        const Context& context,
+        Queue transferQueue,
+        Command transferCommand,
+        const std::filesystem::path& filePath,
+        std::string_view debugName);
+
+    std::tuple<
+        Image,
+        Shader>
+    EquiRectangularToCubemap(
+        const Context& context,
+        const BindlessDescriptor& descriptor,
+        vk::CommandBuffer graphicsCommand,
+        bool bUsePipelines,
+        int equiIndex,
         std::string_view debugName);
 } // namespace Swift::Vulkan::Init

@@ -80,7 +80,7 @@ namespace Swift::Vulkan
         vk::Format format{};
         VmaAllocation imageAllocation{};
         vk::ImageLayout currentLayout = vk::ImageLayout::eUndefined;
-        std::variant<dds::Image> payload;
+        vk::Extent3D extent{};
 
         operator vk::Image() const { return image; }
 
@@ -89,9 +89,9 @@ namespace Swift::Vulkan
             this->image = image;
             return *this;
         }
-        Image& SetView(const vk::ImageView& imageView)
+        Image& SetView(const vk::ImageView& imageViews)
         {
-            this->imageView = imageView;
+            this->imageView = imageViews;
             return *this;
         }
         Image& SetFormat(const vk::Format& format)
@@ -104,9 +104,14 @@ namespace Swift::Vulkan
             this->imageAllocation = imageAllocation;
             return *this;
         }
-        Image& SetPayload(const std::variant<dds::Image>& payload)
+        Image& SetExtent(const vk::Extent3D extent)
         {
-            this->payload = payload;
+            this->extent = extent;
+            return *this;
+        }
+        Image& SetExtent(const vk::Extent2D extent)
+        {
+            this->extent = vk::Extent3D(extent, 1);
             return *this;
         }
 
@@ -267,7 +272,7 @@ namespace Swift::Vulkan
     struct Shader
     {
         std::vector<vk::ShaderEXT> shaders;
-        std::vector<vk::ShaderStageFlagBits> stage;
+        std::vector<vk::ShaderStageFlagBits> stageFlags;
         vk::Pipeline pipeline;
         vk::PipelineLayout pipelineLayout;
 
@@ -288,7 +293,7 @@ namespace Swift::Vulkan
         }
         Shader& SetStageFlags(const std::vector<vk::ShaderStageFlagBits>& stage)
         {
-            this->stage = stage;
+            this->stageFlags = stage;
             return *this;
         }
 

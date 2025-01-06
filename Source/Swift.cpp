@@ -25,7 +25,9 @@ namespace
     Vulkan::Queue gComputeQueue;
     Vulkan::Queue gTransferQueue;
     Vulkan::Command gTransferCommand;
+    Vulkan::Command gGraphicsCommand; // For non render loop operations
     vk::Fence gTransferFence;
+    vk::Fence gGraphicsFence; // For non render loop operations
 
     Vulkan::Swapchain gSwapchain;
     Vulkan::BindlessDescriptor gDescriptor;
@@ -38,10 +40,12 @@ namespace
     u32 gCurrentShader = 0;
     std::vector<Vulkan::Image> gWriteableImages;
     std::vector<Vulkan::Image> gSamplerImages;
+    std::vector<Vulkan::Image> gSamplerCubeImages;
+
     std::vector<Vulkan::FrameData> gFrameData;
     u32 gCurrentFrame = 0;
     Vulkan::FrameData gCurrentFrameData;
-    
+
     InitInfo gInitInfo;
 } // namespace
 
@@ -69,6 +73,7 @@ void Swift::Init(const InitInfo& initInfo)
         depthFormat,
         vk::ImageUsageFlagBits::eDepthStencilAttachment,
         1,
+        {},
         "Swapchain Depth");
 
     const auto swapchain =
@@ -105,6 +110,14 @@ void Swift::Init(const InitInfo& initInfo)
         gTransferCommand.commandPool,
         "Transfer Command Buffer");
     gTransferFence = Init::CreateFence(gContext, {}, "Transfer Fence");
+
+    gGraphicsCommand.commandPool =
+        Init::CreateCommandPool(gContext, gGraphicsQueue.index, "Graphics Command Pool");
+    gGraphicsCommand.commandBuffer = Init::CreateCommandBuffer(
+        gContext,
+        gGraphicsCommand.commandPool,
+        "Graphics Command Buffer");
+    gGraphicsFence = Init::CreateFence(gContext, {}, "Graphics Fence");
 
 #ifdef SWIFT_IMGUI
     IMGUI_CHECKVERSION();
@@ -170,13 +183,20 @@ void Swift::Shutdown()
         image.Destroy(gContext);
     }
 
+    for (auto& image : gSamplerCubeImages)
+    {
+        image.Destroy(gContext);
+    }
+
     for (auto& buffer : gBuffers)
     {
         buffer.Destroy(gContext);
     }
 
     gTransferCommand.Destroy(gContext);
+    gGraphicsCommand.Destroy(gContext);
     gContext.device.destroy(gTransferFence);
+    gContext.device.destroy(gGraphicsFence);
     gContext.device.destroy(gLinearSampler);
 
     gSwapchain.Destroy(gContext);
@@ -214,29 +234,6 @@ void Swift::EndFrame(const DynamicInfo& dynamicInfo)
     const auto& renderFence = Render::GetRenderFence(gCurrentFrameData);
     auto& swapchainImage = Render::GetSwapchainImage(gSwapchain);
 
-    // const auto copyRenderBarrier = Util::ImageBarrier(
-    //     gSwapchain.renderImage.currentLayout,
-    //     vk::ImageLayout::eTransferSrcOptimal,
-    //     gSwapchain.renderImage,
-    //     vk::ImageAspectFlagBits::eColor);
-    //
-    // const auto copySwapchainBarrier = Util::ImageBarrier(
-    //     vk::ImageLayout::eUndefined,
-    //     vk::ImageLayout::eTransferDstOptimal,
-    //     swapchainImage,
-    //     vk::ImageAspectFlagBits::eColor);
-    //
-    // Util::PipelineBarrier(commandBuffer, {copyRenderBarrier, copySwapchainBarrier});
-
-    // Util::BlitImage(
-    //     commandBuffer,
-    //     gSwapchain.renderImage,
-    //     gSwapchain.renderImage.currentLayout,
-    //     swapchainImage,
-    //     swapchainImage.currentLayout,
-    //     gSwapchain.extent,
-    //     gSwapchain.extent);
-
     const auto presentBarrier = Util::ImageBarrier(
         swapchainImage.currentLayout,
         vk::ImageLayout::ePresentSrcKHR,
@@ -270,11 +267,8 @@ void Swift::BeginRendering()
 {
     const auto& commandBuffer = Render::GetCommandBuffer(gCurrentFrameData);
     Render::BeginRendering(commandBuffer, gSwapchain, true);
-    Render::DefaultRenderConfig(
-        commandBuffer,
-        gSwapchain.extent,
-        gContext.dynamicLoader,
-        gInitInfo.bUsePipelines);
+    Render::SetPipelineDefault(gContext, commandBuffer, gSwapchain.extent, gInitInfo.bUsePipelines);
+    Render::EnableTransparencyBlending(gContext, commandBuffer);
 }
 
 void Swift::EndRendering()
@@ -308,6 +302,18 @@ void Swift::ShowDebugStats()
     ImGui::Text("FPS: %f", ImGui::GetIO().Framerate);
     ImGui::End();
 #endif
+}
+
+void Swift::SetCullMode(const CullMode& cullMode)
+{
+    const auto& commandBuffer = Render::GetCommandBuffer(gCurrentFrameData);
+    Render::SetCullMode(commandBuffer, static_cast<vk::CullModeFlagBits>(cullMode));
+}
+
+void Swift::SetDepthCompareOp(DepthCompareOp depthCompareOp)
+{
+    const auto& commandBuffer = Render::GetCommandBuffer(gCurrentFrameData);
+    Render::SetDepthCompareOp(commandBuffer, static_cast<vk::CompareOp>(depthCompareOp));
 }
 
 ShaderObject Swift::CreateGraphicsShaderObject(
@@ -349,25 +355,9 @@ ShaderObject Swift::CreateComputeShaderObject(
 void Swift::BindShader(const ShaderObject& shaderObject)
 {
     const auto& commandBuffer = Render::GetCommandBuffer(gCurrentFrameData);
-    const auto& [shaders, stageFlags, pipeline, pipelineLayout] = gShaders.at(shaderObject.index);
+    const auto shader = gShaders.at(shaderObject.index);
 
-    const auto it = std::ranges::find(stageFlags, vk::ShaderStageFlagBits::eCompute);
-    auto pipelineBindPoint = vk::PipelineBindPoint::eCompute;
-    if (it == std::end(stageFlags))
-    {
-        pipelineBindPoint = vk::PipelineBindPoint::eGraphics;
-    }
-
-    if (gInitInfo.bUsePipelines)
-    {
-        commandBuffer.bindPipeline(pipelineBindPoint, pipeline);
-    }
-    else
-    {
-        commandBuffer.bindShadersEXT(stageFlags, shaders, gContext.dynamicLoader);
-    }
-
-    commandBuffer.bindDescriptorSets(pipelineBindPoint, pipelineLayout, 0, gDescriptor.set, {});
+    Render::BindShader(commandBuffer, gContext, gDescriptor, shader, gInitInfo.bUsePipelines);
 
     gCurrentShader = shaderObject.index;
 }
@@ -421,6 +411,7 @@ ImageObject Swift::CreateWriteableImage(
         format,
         imageUsage,
         1,
+        {},
         debugName);
     gWriteableImages.emplace_back(image);
 
@@ -441,6 +432,18 @@ ImageObject Swift::CreateImageFromFile(
     const bool loadAllMipMaps,
     const std::string_view debugName)
 {
+    Swift::BeginTransfer();
+    auto image = Swift::CreateImageFromFileQueued(filePath, mipLevel, loadAllMipMaps, debugName);
+    Swift::EndTransfer();
+    return image;
+}
+
+ImageObject Swift::CreateImageFromFileQueued(
+    const std::filesystem::path& filePath,
+    int mipLevel,
+    bool loadAllMipMaps,
+    std::string_view debugName)
+{
     Image image;
     Buffer staging;
     if (filePath.extension() == ".dds")
@@ -455,9 +458,7 @@ ImageObject Swift::CreateImageFromFile(
             debugName);
     }
     gTransferStagingBuffers.emplace_back(staging);
-    auto& ddsImage = std::get<dds::Image>(image.payload);
-    auto extent = vk::Extent3D(ddsImage.width, ddsImage.height, ddsImage.depth);
-    
+
     gSamplerImages.emplace_back(image);
     const auto arrayElement = static_cast<u32>(gSamplerImages.size() - 1);
     Util::UpdateDescriptorSampler(
@@ -466,7 +467,43 @@ ImageObject Swift::CreateImageFromFile(
         gLinearSampler,
         arrayElement,
         gContext);
-    return ImageObject().SetExtent({extent.width, extent.height}).SetIndex(arrayElement);
+    return ImageObject()
+        .SetExtent({image.extent.width, image.extent.height})
+        .SetIndex(arrayElement);
+}
+
+ImageObject Swift::CreateCubemapFromFile(
+    const std::filesystem::path& filePath,
+    const std::string_view debugName)
+{
+    Swift::BeginTransfer();
+    Image image;
+    Buffer staging;
+    assert(filePath.extension() == ".dds");
+    if (filePath.extension() == ".dds")
+    {
+        std::tie(image, staging) = Init::CreateDDSImage(
+            gContext,
+            gTransferQueue,
+            gTransferCommand,
+            filePath,
+            0,
+            true,
+            debugName);
+    }
+    Swift::EndTransfer();
+    staging.Destroy(gContext);
+
+    gSamplerCubeImages.emplace_back(image);
+    const auto arrayElement = static_cast<u32>(gSamplerCubeImages.size() - 1);
+    Util::UpdateDescriptorSamplerCube(
+        gDescriptor.set,
+        gSamplerCubeImages.back().imageView,
+        gLinearSampler,
+        arrayElement,
+        gContext);
+
+    return ImageObject().SetExtent({image.extent.width, image.extent.height}).SetIndex(arrayElement);
 }
 
 void Swift::DestroyImage(const ImageObject imageObject)
@@ -771,4 +808,5 @@ void Swift::EndTransfer()
     {
         buffer.Destroy(gContext);
     }
+    gTransferStagingBuffers.clear();
 }

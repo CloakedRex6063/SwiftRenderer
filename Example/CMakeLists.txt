@@ -30,3 +30,5 @@ set(FASTGLTF_COMPILE_AS_CPP20 ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(fastgltf)
 
 target_link_libraries(Example PRIVATE fastgltf::fastgltf)
+
+add_subdirectory(Shaders)

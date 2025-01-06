@@ -25,8 +25,8 @@ namespace Swift::Vulkan::Util
         std::vector<Image>& writeImages);
 
     inline u32 GetSwapchainImageCount(
-    const vk::PhysicalDevice gpu,
-    const vk::SurfaceKHR surface)
+        const vk::PhysicalDevice gpu,
+        const vk::SurfaceKHR surface)
     {
         const auto [result, capabilities] = gpu.getSurfaceCapabilitiesKHR(surface);
         VK_ASSERT(result, "Failed to get surface capabilities");
@@ -109,7 +109,8 @@ namespace Swift::Vulkan::Util
         const Context& context,
         vk::CommandBuffer commandBuffer,
         u32 queueIndex,
-        const dds::Image& ddsImage,
+        const dds::Header& ddsImage,
+        std::string_view filePath,
         u32 mipLevel,
         bool loadAllMips,
         const Image& image);
@@ -117,8 +118,8 @@ namespace Swift::Vulkan::Util
     void CopyBufferToImage(
         vk::CommandBuffer commandBuffer,
         vk::Buffer buffer,
-        vk::Extent3D extent,
-        u32 maxMips,
+        const dds::Header& ddsImage,
+        u32 mipLevel,
         bool loadAllMips,
         vk::Image image);
 
@@ -153,6 +154,13 @@ namespace Swift::Vulkan::Util
         u32 arrayElement,
         const vk::Device& device);
 
+    void UpdateDescriptorSamplerCube(
+        vk::DescriptorSet set,
+        vk::ImageView imageView,
+        vk::Sampler sampler,
+        u32 arrayElement,
+        const vk::Device& device);
+
     template <typename T>
     static void NameObject(
         T object,
@@ -174,25 +182,28 @@ namespace Swift::Vulkan::Util
 
     inline vk::ImageSubresourceRange GetImageSubresourceRange(
         const vk::ImageAspectFlags aspectMask,
-        const u32 mipCount = 1)
+        const u32 mipCount = 1,
+        const u32 layerCount = 1)
     {
         const auto range = vk::ImageSubresourceRange()
                                .setAspectMask(aspectMask)
                                .setBaseArrayLayer(0)
                                .setBaseMipLevel(0)
-                               .setLayerCount(1)
+                               .setLayerCount(layerCount)
                                .setLevelCount(mipCount);
         return range;
     }
 
     inline vk::ImageSubresourceLayers GetImageSubresourceLayers(
         const vk::ImageAspectFlags aspectMask,
-        const u32 mipLevel = 0)
+        const u32 mipLevel = 0,
+        const u32 layerCount = 1,
+        const u32 baseArrayLayer = 0)
     {
         const auto range = vk::ImageSubresourceLayers()
                                .setAspectMask(aspectMask)
-                               .setBaseArrayLayer(0)
-                               .setLayerCount(1)
+                               .setBaseArrayLayer(baseArrayLayer)
+                               .setLayerCount(layerCount)
                                .setMipLevel(mipLevel);
         return range;
     }
@@ -202,7 +213,8 @@ namespace Swift::Vulkan::Util
         vk::ImageLayout newLayout,
         Image& image,
         vk::ImageAspectFlags flags,
-        u32 mipCount = 1);
+        u32 mipCount = 1,
+        u32 arrayLayers = 1);
 
     void PipelineBarrier(
         vk::CommandBuffer commandBuffer,

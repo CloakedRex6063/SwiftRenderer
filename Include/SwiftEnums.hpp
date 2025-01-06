@@ -19,3 +19,23 @@ enum class BufferType : uint8_t
     eIndex,
     eIndirect
 };
+
+enum class CullMode 
+{
+    eNone,
+    eFront,
+    eBack,
+    eFrontAndBack
+};
+
+enum class DepthCompareOp
+{
+    eNever,
+    eLess,
+    eEqual,
+    eLessOrEqual,
+    eGreater,
+    eNotEqual,
+    eGreaterOrEqual,
+    eAlways
+  };
