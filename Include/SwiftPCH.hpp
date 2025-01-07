@@ -11,6 +11,7 @@
 #include "map"
 #include "iostream"
 #include "variant"
+#include "format"
 
 #define GLM_ENABLE_EXPERIMENTAL
 #include "glm/glm.hpp"

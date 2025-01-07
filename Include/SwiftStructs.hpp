@@ -104,4 +104,21 @@ namespace Swift
             return *this;
         }
     };
+
+    struct BoundingSphere
+    {
+        glm::vec3 center{};
+        float radius{};
+
+        BoundingSphere& SetCenter(const glm::vec3& center)
+        {
+            this->center = center;
+            return *this;
+        }
+        BoundingSphere& SetRadius(const float radius)
+        {
+            this->radius = radius;
+            return *this;
+        }
+    };
 }  // namespace Swift

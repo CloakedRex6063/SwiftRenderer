@@ -6,7 +6,7 @@ target_link_libraries(SwiftRender PUBLIC GPUOpen::VulkanMemoryAllocator)
 
 add_subdirectory(DDS)
 target_compile_definitions(SwiftRender PUBLIC DDS_USE_STD_FILESYSTEM DDS_CPP_17)
-target_link_libraries(SwiftRender PRIVATE dds_image)
+target_link_libraries(SwiftRender PRIVATE DDS)
 target_include_directories(SwiftRender PUBLIC DDS/include)
 
 find_package(Vulkan REQUIRED)
