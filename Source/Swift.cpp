@@ -431,19 +431,19 @@ ImageObject Swift::CreateWriteableImage(
     return ImageObject().SetExtent(size).SetIndex(static_cast<u32>(gWriteableImages.size() - 1));
 }
 
-ImageObject Swift::CreateImageFromFile(
+ImageObject Swift::LoadImageFromFile(
     const std::filesystem::path& filePath,
     const int mipLevel,
     const bool loadAllMipMaps,
     const std::string_view debugName)
 {
     Swift::BeginTransfer();
-    auto image = Swift::CreateImageFromFileQueued(filePath, mipLevel, loadAllMipMaps, debugName);
+    auto image = Swift::LoadImageFromFileQueued(filePath, mipLevel, loadAllMipMaps, debugName);
     Swift::EndTransfer();
     return image;
 }
 
-ImageObject Swift::CreateImageFromFileQueued(
+ImageObject Swift::LoadImageFromFileQueued(
     const std::filesystem::path& filePath,
     int mipLevel,
     bool loadAllMipMaps,
@@ -477,7 +477,7 @@ ImageObject Swift::CreateImageFromFileQueued(
         .SetIndex(arrayElement);
 }
 
-ImageObject Swift::CreateCubemapFromFile(
+ImageObject Swift::LoadCubemapFromFile(
     const std::filesystem::path& filePath,
     const std::string_view debugName)
 {

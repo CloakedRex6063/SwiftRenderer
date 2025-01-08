@@ -49,17 +49,17 @@ namespace Swift
     ImageObject CreateWriteableImage(
         glm::uvec2 size,
         std::string_view debugName);
-    ImageObject CreateImageFromFile(
+    ImageObject LoadImageFromFile(
         const std::filesystem::path& filePath,
         int mipLevel,
         bool loadAllMipMaps,
         std::string_view debugName);
-    ImageObject CreateImageFromFileQueued(
+    ImageObject LoadImageFromFileQueued(
         const std::filesystem::path& filePath,
         int mipLevel,
         bool loadAllMipMaps,
         std::string_view debugName);
-    ImageObject CreateCubemapFromFile(
+    ImageObject LoadCubemapFromFile(
         const std::filesystem::path& filePath,
         std::string_view debugName);
     void DestroyImage(ImageObject imageObject);
