@@ -38,4 +38,11 @@ enum class DepthCompareOp
     eNotEqual,
     eGreaterOrEqual,
     eAlways
-  };
+};
+
+enum class PolygonMode
+{
+    eFill,
+    eLine,
+    ePoint,
+};

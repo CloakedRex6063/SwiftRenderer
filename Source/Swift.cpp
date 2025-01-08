@@ -315,6 +315,11 @@ void Swift::SetDepthCompareOp(DepthCompareOp depthCompareOp)
     const auto& commandBuffer = Render::GetCommandBuffer(gCurrentFrameData);
     Render::SetDepthCompareOp(commandBuffer, static_cast<vk::CompareOp>(depthCompareOp));
 }
+void Swift::SetPolygonMode(PolygonMode polygonMode)
+{
+    const auto& commandBuffer = Render::GetCommandBuffer(gCurrentFrameData);
+    Render::SetPolygonMode(gContext, commandBuffer, static_cast<vk::PolygonMode>(polygonMode));
+}
 
 ShaderObject Swift::CreateGraphicsShaderObject(
     const std::string_view vertexPath,
@@ -524,7 +529,7 @@ BufferObject Swift::CreateBuffer(
     const u32 size,
     const std::string_view debugName)
 {
-    vk::BufferUsageFlags bufferUsageFlags = vk::BufferUsageFlagBits::eShaderDeviceAddress;
+    vk::BufferUsageFlags bufferUsageFlags = vk::BufferUsageFlagBits::eShaderDeviceAddress | vk::BufferUsageFlagBits::eTransferDst;
     switch (bufferType)
     {
     case BufferType::eUniform:
@@ -590,6 +595,17 @@ void Swift::UploadToMapped(
     const u64 size)
 {
     Util::UploadToMapped(data, mapped, offset, size);
+}
+
+void Swift::UpdateSmallBuffer(
+    const BufferObject& buffer,
+    const u64 offset,
+    const u64 size,
+    const void* data)
+{
+    const auto& realBuffer = gBuffers.at(buffer.index);
+    const auto& commandBuffer = Render::GetCommandBuffer(gCurrentFrameData);
+    commandBuffer.updateBuffer(realBuffer, offset, size, data);
 }
 
 u64 Swift::GetBufferAddress(const BufferObject& buffer)

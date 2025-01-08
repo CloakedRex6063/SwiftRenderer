@@ -16,6 +16,7 @@ namespace Swift
 
     void SetCullMode(const CullMode& cullMode);
     void SetDepthCompareOp(DepthCompareOp depthCompareOp);
+    void SetPolygonMode(PolygonMode polygonMode);
 
     void Draw(
         u32 vertexCount,
@@ -81,6 +82,11 @@ namespace Swift
         const void* data,
         u64 offset,
         u64 size);
+    void UpdateSmallBuffer(
+        const BufferObject& buffer,
+        u64 offset,
+        u64 size,
+        const void* data);
 
     u64 GetBufferAddress(const BufferObject& buffer);
     void BindIndexBuffer(const BufferObject& bufferObject);
