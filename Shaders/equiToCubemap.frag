@@ -1,16 +1,24 @@
 #version 460
-#include "bindings.glsl"
+#extension GL_GOOGLE_include_directive : require 
 #extension GL_EXT_nonuniform_qualifier : require
+#extension GL_EXT_buffer_reference : require
+#include "bindings.glsl"
 
 layout (location = 0) in vec3 WorldPos;
 layout(location = 0) out vec4 FragColor;
 
 layout(binding = SamplerBinding) uniform sampler2D samplers[];
 
+layout(buffer_reference, std430) readonly buffer ViewBuffer
+{
+    mat4 views[];
+};
+
 layout(push_constant) uniform Constant
 {
+    mat4 proj;
+    ViewBuffer viewBuffer;
     int cubemapIndex;
-    mat4 viewProj;
 } pushConstant;
 
 const vec2 invAtan = vec2(0.1591, 0.3183);

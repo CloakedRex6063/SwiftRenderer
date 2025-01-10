@@ -112,12 +112,18 @@ namespace Swift::Vulkan::Init
 
     std::tuple<
         Image,
-        Shader>
+        Image,
+        Image,
+        Image>
     EquiRectangularToCubemap(
         const Context& context,
         const BindlessDescriptor& descriptor,
+        std::vector<Image>& samplerCubes,
+        vk::Sampler sampler,
         vk::CommandBuffer graphicsCommand,
+        vk::Fence graphicsFence,
+        Queue graphicsQueue,
         bool bUsePipelines,
-        int equiIndex,
+        u32 equiIndex,
         std::string_view debugName);
 } // namespace Swift::Vulkan::Init

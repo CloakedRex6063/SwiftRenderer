@@ -1,15 +1,11 @@
 #include "Vulkan/VulkanInit.hpp"
-#include "../../../STBI/Include/stb_image.h"
 #include "Utils/FileIO.hpp"
 #include "Vulkan/VulkanConstants.hpp"
+#include "Vulkan/VulkanRender.hpp"
 #include "Vulkan/VulkanStructs.hpp"
 #include "Vulkan/VulkanUtil.hpp"
 #include "dds.hpp"
 #include "vulkan/vulkan_win32.h"
-
-#include <Swift.hpp>
-#include <Vulkan/VulkanRender.hpp>
-#include <complex.h>
 
 namespace
 {
@@ -184,14 +180,14 @@ namespace
                 continue;
             }
 
-            std::array<const char*, 2> extensions{VK_KHR_SWAPCHAIN_EXTENSION_NAME};
+            std::vector extensions{VK_KHR_SWAPCHAIN_EXTENSION_NAME};
             if (initInfo.bUsePipelines)
             {
-                extensions[1] = VK_EXT_EXTENDED_DYNAMIC_STATE_3_EXTENSION_NAME;
+                extensions.emplace_back(VK_EXT_EXTENDED_DYNAMIC_STATE_3_EXTENSION_NAME);
             }
             else
             {
-                extensions[1] = VK_EXT_SHADER_OBJECT_EXTENSION_NAME;
+                extensions.emplace_back(VK_EXT_SHADER_OBJECT_EXTENSION_NAME);
             }
 
             bool extensionSupported = true;
@@ -408,25 +404,20 @@ namespace
         const vk::Format format,
         const vk::ImageViewType viewType,
         const vk::ImageAspectFlags aspectMask,
-        const int baseLayer,
+        const u32 baseMipLevel,
         const std::string_view debugName)
     {
-        auto viewCreateInfo =
-            vk::ImageViewCreateInfo()
-                .setImage(image)
-                .setFormat(format)
-                .setViewType(viewType)
-                .setSubresourceRange(Swift::Vulkan::Util::GetImageSubresourceRange(aspectMask));
-
-        if (baseLayer > 0)
-        {
-            viewCreateInfo.subresourceRange.setBaseArrayLayer(baseLayer);
-        }
-
-        if (viewType == vk::ImageViewType::eCube)
-        {
-            viewCreateInfo.subresourceRange.setLayerCount(6);
-        }
+        const auto layers = viewType == vk::ImageViewType::eCube ? 6 : 1;
+        const auto viewCreateInfo = vk::ImageViewCreateInfo()
+                                        .setImage(image)
+                                        .setFormat(format)
+                                        .setViewType(viewType)
+                                        .setSubresourceRange(
+                                            Swift::Vulkan::Util::GetImageSubresourceRange(
+                                                aspectMask,
+                                                1,
+                                                baseMipLevel,
+                                                layers));
 
         const auto [viewResult, imageView] = context.device.createImageView(viewCreateInfo);
         VK_ASSERT(viewResult, "Failed to create image view");
@@ -793,6 +784,11 @@ namespace Swift::Vulkan
             viewType = vk::ImageViewType::e3D;
         }
 
+        if (flags & vk::ImageCreateFlagBits::eCubeCompatible)
+        {
+            viewType = vk::ImageViewType::eCube;
+        }
+
         const auto imageView = CreateImageView(
             context,
             image,
@@ -817,19 +813,21 @@ namespace Swift::Vulkan
         const Queue transferQueue,
         const Command transferCommand,
         const std::filesystem::path& filePath,
-        const int mipLevel,
+        int mipLevel,
         const bool loadAllMips,
         const std::string_view debugName)
     {
-        auto stream = std::ifstream(filePath, std::ios::binary | std::ios::in);
-        std::vector<char> data(sizeof(dds::Header) / sizeof(char));
-        stream.read(data.data(), sizeof(dds::Header) / sizeof(char));
-        dds::Header header = dds::ReadHeader(data.data(), sizeof(dds::Header));
+        dds::Header header = dds::ReadHeader(filePath);
 
         auto imageCreateInfo = header.GetVulkanImageCreateInfo(
             vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst);
         auto imageViewCreateInfo = header.GetVulkanImageViewCreateInfo();
-        
+
+        if (mipLevel == -1)
+        {
+            mipLevel = static_cast<int>(header.MipLevels()) - 1;
+        }
+
         if (!loadAllMips)
         {
             imageCreateInfo.mipLevels = 1;
@@ -868,6 +866,283 @@ namespace Swift::Vulkan
         Util::PipelineBarrier(transferCommand, dstImageBarrier);
 
         return {image, buffer};
+    }
+
+    std::tuple<
+        Image,
+        Image,
+        Image,
+        Image>
+    Init::EquiRectangularToCubemap(
+        const Context& context,
+        const BindlessDescriptor& descriptor,
+        std::vector<Image>& samplerCubes,
+        vk::Sampler sampler,
+        vk::CommandBuffer graphicsCommand,
+        vk::Fence graphicsFence,
+        Queue graphicsQueue,
+        bool bUsePipelines,
+        u32 equiIndex,
+        const std::string_view debugName)
+    {
+        auto captureProjection = glm::perspective(glm::radians(90.0f), 1.0f, 0.1f, 10.f);
+        const std::array captureViews = {
+            lookAt(
+                glm::vec3(0.0f, 0.0f, 0.0f),
+                glm::vec3(1.0f, 0.0f, 0.0f),
+                glm::vec3(0.0f, -1.0f, 0.0f)),
+            lookAt(
+                glm::vec3(0.0f, 0.0f, 0.0f),
+                glm::vec3(-1.0f, 0.0f, 0.0f),
+                glm::vec3(0.0f, -1.0f, 0.0f)),
+            lookAt(
+                glm::vec3(0.0f, 0.0f, 0.0f),
+                glm::vec3(0.0f, 1.0f, 0.0f),
+                glm::vec3(0.0f, 0.0f, 1.0f)),
+            lookAt(
+                glm::vec3(0.0f, 0.0f, 0.0f),
+                glm::vec3(0.0f, -1.0f, 0.0f),
+                glm::vec3(0.0f, 0.0f, -1.0f)),
+            lookAt(
+                glm::vec3(0.0f, 0.0f, 0.0f),
+                glm::vec3(0.0f, 0.0f, 1.0f),
+                glm::vec3(0.0f, -1.0f, 0.0f)),
+            lookAt(
+                glm::vec3(0.0f, 0.0f, 0.0f),
+                glm::vec3(0.0f, 0.0f, -1.0f),
+                glm::vec3(0.0f, -1.0f, 0.0f))};
+
+        const auto viewsBuffer = CreateBuffer(
+            context,
+            graphicsQueue.index,
+            captureViews.size() * sizeof(glm::mat4),
+            vk::BufferUsageFlagBits::eShaderDeviceAddress,
+            "Capture Views Buffer");
+        Util::UploadToBuffer(
+            context,
+            captureViews.data(),
+            viewsBuffer,
+            0,
+            captureViews.size() * sizeof(glm::mat4));
+
+        const auto addressInfo = vk::BufferDeviceAddressInfo().setBuffer(viewsBuffer);
+        struct EquiPushConstant
+        {
+            glm::mat4 projection;
+            u64 viewBuffer;
+            u32 equiIndex;
+        } equiPC{
+            .projection = captureProjection,
+            .viewBuffer = context.device.getBufferAddress(addressInfo),
+            .equiIndex = equiIndex,
+        };
+
+        struct IrradiancePushConstant
+        {
+            u32 skyboxIndex;
+        };
+
+        struct FilterPushConstant
+        {
+            u32 skyboxIndex;
+            float roughness;
+        };
+
+        const auto equiShader = CreateGraphicsShader(
+            context,
+            descriptor,
+            bUsePipelines,
+            sizeof(EquiPushConstant),
+            "cubemap.vert.spv",
+            "equiToCubemap.frag.spv",
+            "Equi Shader");
+
+        const auto irradianceShader = CreateGraphicsShader(
+            context,
+            descriptor,
+            bUsePipelines,
+            sizeof(IrradiancePushConstant),
+            "quad.vert.spv",
+            "irradiance.frag.spv",
+            "Irradiance Shader");
+
+        const auto filterShader = CreateGraphicsShader(
+            context,
+            descriptor,
+            bUsePipelines,
+            sizeof(FilterPushConstant),
+            "quad.vert.spv",
+            "prefilter.frag.spv",
+            "Prefilter Shader");
+
+        const auto brdfShader = CreateGraphicsShader(
+            context,
+            descriptor,
+            bUsePipelines,
+            0,
+            "quad.vert.spv",
+            "brdf.frag.spv",
+            "BRDF Shader");
+
+        constexpr auto cubemapExtent = vk::Extent2D(1024, 1024);
+        const auto skybox = Init::CreateImage(
+            context,
+            vk::ImageType::e2D,
+            vk::Extent3D(cubemapExtent, 1),
+            vk::Format::eR16G16B16A16Sfloat,
+            vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eColorAttachment |
+                vk::ImageUsageFlagBits::eSampled,
+            10,
+            vk::ImageCreateFlagBits::eCubeCompatible,
+            debugName.data() + std::string(" Cubemap"));
+
+        Util::BeginOneTimeCommand(graphicsCommand);
+        Render::BindShader(graphicsCommand, context, descriptor, equiShader, bUsePipelines);
+        Render::SetPipelineDefault(context, graphicsCommand, cubemapExtent, bUsePipelines);
+        graphicsCommand.pushConstants<EquiPushConstant>(
+            equiShader.pipelineLayout,
+            vk::ShaderStageFlagBits::eAllGraphics,
+            0,
+            equiPC);
+
+        Render::BeginRendering(graphicsCommand, skybox.imageView, {}, cubemapExtent, (1 << 6) - 1);
+
+        graphicsCommand.draw(36, 1, 0, 0);
+
+        Render::EndRendering(graphicsCommand);
+
+        Util::EndCommand(graphicsCommand);
+        Util::SubmitQueueHost(graphicsQueue, graphicsCommand, graphicsFence);
+        Util::WaitFence(context, graphicsFence);
+        Util::ResetFence(context, graphicsFence);
+
+        samplerCubes.emplace_back(skybox);
+        const auto arrayElement = static_cast<u32>(samplerCubes.size() - 1);
+        Util::UpdateDescriptorSamplerCube(
+            descriptor.set,
+            samplerCubes.back().imageView,
+            sampler,
+            arrayElement,
+            context);
+
+        constexpr vk::Extent2D irradianceExtent = vk::Extent2D(128, 128);
+        const auto irradiance = CreateImage(
+            context,
+            vk::ImageType::e2D,
+            vk::Extent3D(128, 128, 1),
+            vk::Format::eR16G16B16A16Sfloat,
+            vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eColorAttachment |
+                vk::ImageUsageFlagBits::eSampled,
+            1,
+            vk::ImageCreateFlagBits::eCubeCompatible,
+            debugName.data() + std::string(" Irradiance"));
+
+        const IrradiancePushConstant irradianceConstant = {
+            .skyboxIndex = arrayElement,
+        };
+
+        Util::BeginOneTimeCommand(graphicsCommand);
+        Render::BindShader(graphicsCommand, context, descriptor, irradianceShader, bUsePipelines);
+        Render::SetPipelineDefault(context, graphicsCommand, cubemapExtent, bUsePipelines);
+
+        Render::BeginRendering(graphicsCommand, irradiance.imageView, {}, {128, 128}, (1 << 6) - 1);
+
+        graphicsCommand.pushConstants<IrradiancePushConstant>(
+            irradianceShader.pipelineLayout,
+            vk::ShaderStageFlagBits::eAllGraphics,
+            0,
+            irradianceConstant);
+
+        graphicsCommand.draw(36, 1, 0, 0);
+
+        Render::EndRendering(graphicsCommand);
+
+        constexpr auto specularExtent = vk::Extent2D(256, 256);
+        const auto specular = CreateImage(
+            context,
+            vk::ImageType::e2D,
+            vk::Extent3D(specularExtent, 1),
+            vk::Format::eR16G16B16A16Sfloat,
+            vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eColorAttachment |
+                vk::ImageUsageFlagBits::eSampled,
+            8,
+            vk::ImageCreateFlagBits::eCubeCompatible,
+            debugName.data() + std::string(" Specular"));
+
+        FilterPushConstant specularConstant = {
+            .skyboxIndex = arrayElement,
+            .roughness = 0,
+        };
+
+        constexpr int specularMipLevels = 4;
+        std::array<vk::ImageView, specularMipLevels> specularStuff = {};
+        for (int i = 0; i < specularMipLevels; i++)
+        {
+            specularStuff[i] = CreateImageView(
+                context,
+                specular,
+                vk::Format::eR16G16B16A16Sfloat,
+                vk::ImageViewType::e2D,
+                vk::ImageAspectFlagBits::eColor,
+                i,
+                "Specular Mip Stuff");
+        }
+
+        Render::BindShader(graphicsCommand, context, descriptor, filterShader, bUsePipelines);
+        // for each mip level
+        for (int i = 0; i < specularMipLevels; i++)
+        {
+            auto extent = Util::GetMipExtent(specularExtent, i);
+            Render::BeginRendering(graphicsCommand, specularStuff[i], {}, extent, (1 << 6) - 1);
+            float roughness = static_cast<float>(i) / (10.f - 1.0f);
+
+            specularConstant.roughness = roughness;
+
+            graphicsCommand.pushConstants<FilterPushConstant>(
+                filterShader.pipelineLayout,
+                vk::ShaderStageFlagBits::eAllGraphics,
+                0,
+                specularConstant);
+
+            graphicsCommand.draw(3, 1, 0, 0);
+            Render::EndRendering(graphicsCommand);
+        }
+
+        const auto lut = CreateImage(
+            context,
+            vk::ImageType::e2D,
+            vk::Extent3D(cubemapExtent, 1),
+            vk::Format::eR16G16Sfloat,
+            vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled,
+            1,
+            {},
+            debugName.data() + std::string(" Lut"));
+
+        Render::BindShader(graphicsCommand, context, descriptor, brdfShader, bUsePipelines);
+        Render::BeginRendering(graphicsCommand, lut.imageView, {}, cubemapExtent, 0);
+
+        Render::SetCullMode(graphicsCommand, vk::CullModeFlagBits::eNone);
+        graphicsCommand.draw(3, 1, 0, 0);
+
+        Render::EndRendering(graphicsCommand);
+
+        Util::EndCommand(graphicsCommand);
+        Util::SubmitQueueHost(graphicsQueue, graphicsCommand, graphicsFence);
+        Util::WaitFence(context, graphicsFence);
+        Util::ResetFence(context, graphicsFence);
+
+        equiShader.Destroy(context);
+        irradianceShader.Destroy(context);
+        filterShader.Destroy(context);
+        brdfShader.Destroy(context);
+        viewsBuffer.Destroy(context);
+
+        for (int i = 0; i < specularMipLevels; i++)
+        {
+            context.device.destroy(specularStuff[i]);
+        }
+
+        return {skybox, irradiance, specular, lut};
     }
 
     std::vector<Image> Init::CreateSwapchainImages(
@@ -992,20 +1267,19 @@ namespace Swift::Vulkan
 
     vk::Sampler Init::CreateSampler(const vk::Device device)
     {
-        constexpr auto samplerCreateInfo =
-            vk::SamplerCreateInfo()
-                .setMagFilter(vk::Filter::eLinear)
-                .setMinFilter(vk::Filter::eLinear)
-                .setAddressModeU(vk::SamplerAddressMode::eRepeat)
-                .setAddressModeV(vk::SamplerAddressMode::eRepeat)
-                .setAddressModeW(vk::SamplerAddressMode::eRepeat)
-                .setBorderColor(vk::BorderColor::eIntOpaqueBlack)
-                .setUnnormalizedCoordinates(false)
-                .setCompareOp(vk::CompareOp::eAlways)
-                .setCompareEnable(false)
-                .setMipmapMode(vk::SamplerMipmapMode::eLinear)
-                .setMinLod(0)
-                .setMaxLod(13);
+        constexpr auto samplerCreateInfo = vk::SamplerCreateInfo()
+                                               .setMagFilter(vk::Filter::eLinear)
+                                               .setMinFilter(vk::Filter::eLinear)
+                                               .setAddressModeU(vk::SamplerAddressMode::eRepeat)
+                                               .setAddressModeV(vk::SamplerAddressMode::eRepeat)
+                                               .setAddressModeW(vk::SamplerAddressMode::eRepeat)
+                                               .setBorderColor(vk::BorderColor::eIntOpaqueBlack)
+                                               .setUnnormalizedCoordinates(false)
+                                               .setCompareOp(vk::CompareOp::eAlways)
+                                               .setCompareEnable(false)
+                                               .setMipmapMode(vk::SamplerMipmapMode::eLinear)
+                                               .setMinLod(0)
+                                               .setMaxLod(13);
         const auto [result, sampler] = device.createSampler(samplerCreateInfo);
         VK_ASSERT(result, "Failed to create sampler!");
         return sampler;

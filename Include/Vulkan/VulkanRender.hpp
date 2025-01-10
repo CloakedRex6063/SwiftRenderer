@@ -199,6 +199,13 @@ namespace Swift::Vulkan::Render
         commandBuffer.setPrimitiveRestartEnable(false);
     }
 
+    inline void SetPrimitiveTopology(
+        const vk::CommandBuffer commandBuffer,
+        const vk::PrimitiveTopology topology)
+    {
+        commandBuffer.setPrimitiveTopology(topology);
+    }
+
     // --------------------------------------------------------------------------------------------
     // ---------------------------------Vertex Input State-----------------------------------------
     // --------------------------------------------------------------------------------------------

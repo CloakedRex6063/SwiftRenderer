@@ -19,6 +19,10 @@ namespace Swift::Vulkan::Util
         vk::Extent3D extent,
         u32 mipLevel);
 
+    vk::Extent2D GetMipExtent(
+        vk::Extent2D extent,
+        u32 mipLevel);
+
     Image& GetRealImage(
         ImageObject image,
         std::vector<Image>& readImages,
@@ -183,12 +187,13 @@ namespace Swift::Vulkan::Util
     inline vk::ImageSubresourceRange GetImageSubresourceRange(
         const vk::ImageAspectFlags aspectMask,
         const u32 mipCount = 1,
+        const u32 baseMip = 0,
         const u32 layerCount = 1)
     {
         const auto range = vk::ImageSubresourceRange()
                                .setAspectMask(aspectMask)
                                .setBaseArrayLayer(0)
-                               .setBaseMipLevel(0)
+                               .setBaseMipLevel(baseMip)
                                .setLayerCount(layerCount)
                                .setLevelCount(mipCount);
         return range;

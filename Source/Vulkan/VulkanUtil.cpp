@@ -52,6 +52,15 @@ namespace Swift::Vulkan
         return {mipWidth, mipHeight, mipDepth};
     }
 
+    vk::Extent2D Util::GetMipExtent(
+        const vk::Extent2D extent,
+        const u32 mipLevel)
+    {
+        u32 mipWidth = std::max(extent.width >> mipLevel, 1u);
+        u32 mipHeight = std::max(extent.height >> mipLevel, 1u);
+        return {mipWidth, mipHeight};
+    }
+
     Image& Util::GetRealImage(
         const ImageObject image,
         std::vector<Image>& readImages,
@@ -211,7 +220,7 @@ namespace Swift::Vulkan
                 .setDstStageMask(vk::PipelineStageFlagBits2::eAllCommands)
                 .setOldLayout(oldLayout)
                 .setNewLayout(newLayout)
-                .setSubresourceRange(GetImageSubresourceRange(flags, mipCount, arrayLayers))
+                .setSubresourceRange(GetImageSubresourceRange(flags, mipCount, 0,arrayLayers))
                 .setImage(image);
         image.currentLayout = newLayout;
         return imageBarrier;
@@ -299,7 +308,7 @@ namespace Swift::Vulkan
         const auto mapped = MapBuffer(context, buffer);
         file.read(static_cast<char*>(mapped), imageSize);
         UnmapBuffer(context, buffer);
-        
+
         CopyBufferToImage(commandBuffer, buffer, ddsImage, mipLevel, loadAllMips, image);
         return buffer;
     }
@@ -344,14 +353,10 @@ namespace Swift::Vulkan
             {
                 const auto extent = Util::GetMipExtent(ddsImage.GetVulkanExtent(), mipLevel);
                 const auto bufferImageCopy =
-                    vk::BufferImageCopy2().setImageExtent(extent).setImageSubresource(GetImageSubresourceLayers(
-                                                             vk::ImageAspectFlagBits::eColor,
-                                                             0,
-                                                             1,
-                                                             i));
+                    vk::BufferImageCopy2().setImageExtent(extent).setImageSubresource(
+                        GetImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, 0, 1, i));
                 copyRegions.emplace_back(bufferImageCopy);
             }
-
         }
         const auto bufferToImageInfo = vk::CopyBufferToImageInfo2()
                                            .setSrcBuffer(buffer)

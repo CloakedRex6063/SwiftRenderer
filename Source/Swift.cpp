@@ -360,7 +360,7 @@ ShaderObject Swift::CreateComputeShaderObject(
 void Swift::BindShader(const ShaderObject& shaderObject)
 {
     const auto& commandBuffer = Render::GetCommandBuffer(gCurrentFrameData);
-    const auto shader = gShaders.at(shaderObject.index);
+    const auto& shader = gShaders.at(shaderObject.index);
 
     Render::BindShader(commandBuffer, gContext, gDescriptor, shader, gInitInfo.bUsePipelines);
 
@@ -438,16 +438,17 @@ ImageObject Swift::LoadImageFromFile(
     const std::string_view debugName)
 {
     Swift::BeginTransfer();
-    auto image = Swift::LoadImageFromFileQueued(filePath, mipLevel, loadAllMipMaps, debugName);
+    const auto image =
+        Swift::LoadImageFromFileQueued(filePath, mipLevel, loadAllMipMaps, debugName);
     Swift::EndTransfer();
     return image;
 }
 
 ImageObject Swift::LoadImageFromFileQueued(
     const std::filesystem::path& filePath,
-    int mipLevel,
-    bool loadAllMipMaps,
-    std::string_view debugName)
+    const int mipLevel,
+    const bool loadAllMipMaps,
+    const std::string_view debugName)
 {
     Image image;
     Buffer staging;
@@ -508,7 +509,75 @@ ImageObject Swift::LoadCubemapFromFile(
         arrayElement,
         gContext);
 
-    return ImageObject().SetExtent({image.extent.width, image.extent.height}).SetIndex(arrayElement);
+    return ImageObject()
+        .SetExtent({image.extent.width, image.extent.height})
+        .SetIndex(arrayElement);
+}
+
+std::tuple<
+    ImageObject,
+    ImageObject,
+    ImageObject,
+    ImageObject>
+Swift::LoadIBLDataFromHDRI(
+    const std::filesystem::path& filePath,
+    const std::string_view debugName)
+{
+    const auto hdriObject = Swift::LoadImageFromFile(filePath, 0, false, debugName);
+
+    const auto [skybox, irradiance, specular, lut] = Init::EquiRectangularToCubemap(
+        gContext,
+        gDescriptor,
+        gSamplerCubeImages,
+        gLinearSampler,
+        gGraphicsCommand,
+        gGraphicsFence,
+        gGraphicsQueue,
+        gInitInfo.bUsePipelines,
+        hdriObject.index,
+        debugName);
+
+    auto arrayElement = static_cast<u32>(gSamplerCubeImages.size() - 1);
+    Util::UpdateDescriptorSamplerCube(
+        gDescriptor.set,
+        gSamplerCubeImages.back().imageView,
+        gLinearSampler,
+        arrayElement,
+        gContext);
+    auto skyboxObject = ImageObject().SetIndex(arrayElement).SetType(ImageType::eReadOnly);
+
+    gSamplerCubeImages.emplace_back(irradiance);
+    arrayElement = static_cast<u32>(gSamplerCubeImages.size() - 1);
+    Util::UpdateDescriptorSamplerCube(
+        gDescriptor.set,
+        gSamplerCubeImages.back().imageView,
+        gLinearSampler,
+        arrayElement,
+        gContext);
+    auto irradianceObject = ImageObject().SetIndex(arrayElement).SetType(ImageType::eReadOnly);
+
+    gSamplerCubeImages.emplace_back(specular);
+    arrayElement = static_cast<u32>(gSamplerCubeImages.size() - 1);
+    Util::UpdateDescriptorSamplerCube(
+        gDescriptor.set,
+        gSamplerCubeImages.back().imageView,
+        gLinearSampler,
+        arrayElement,
+        gContext);
+    auto specularObject = ImageObject().SetIndex(arrayElement).SetType(ImageType::eReadOnly);
+    
+    gSamplerImages.emplace_back(lut);
+    arrayElement = static_cast<u32>(gSamplerImages.size() - 1);
+    Util::UpdateDescriptorSampler(
+        gDescriptor.set,
+        gSamplerImages.back().imageView,
+        gLinearSampler,
+        arrayElement,
+        gContext);
+    
+    auto lutObject = ImageObject().SetIndex(arrayElement).SetType(ImageType::eReadOnly);
+
+    return {skyboxObject, irradianceObject, specularObject, lutObject};
 }
 
 void Swift::DestroyImage(const ImageObject imageObject)
@@ -529,7 +598,8 @@ BufferObject Swift::CreateBuffer(
     const u32 size,
     const std::string_view debugName)
 {
-    vk::BufferUsageFlags bufferUsageFlags = vk::BufferUsageFlagBits::eShaderDeviceAddress | vk::BufferUsageFlagBits::eTransferDst;
+    vk::BufferUsageFlags bufferUsageFlags =
+        vk::BufferUsageFlagBits::eShaderDeviceAddress | vk::BufferUsageFlagBits::eTransferDst;
     switch (bufferType)
     {
     case BufferType::eUniform:

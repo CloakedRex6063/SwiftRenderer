@@ -40,11 +40,23 @@ namespace Swift
         std::string_view fragmentPath,
         std::string_view debugName,
         u32 pushConstantSize = 0);
+
+    
     ShaderObject CreateComputeShaderObject(
         const std::string& computePath,
         u32 pushConstantSize,
         std::string_view debugName);
+    
     void BindShader(const ShaderObject& shaderObject);
+    
+    void PushConstant(
+    const void* value,
+    u32 size);
+    
+    void DispatchCompute(
+        u32 x,
+        u32 y,
+        u32 z);
 
     ImageObject CreateWriteableImage(
         glm::uvec2 size,
@@ -54,6 +66,7 @@ namespace Swift
         int mipLevel,
         bool loadAllMipMaps,
         std::string_view debugName);
+    void DestroyImage(ImageObject imageObject);
     ImageObject LoadImageFromFileQueued(
         const std::filesystem::path& filePath,
         int mipLevel,
@@ -62,7 +75,14 @@ namespace Swift
     ImageObject LoadCubemapFromFile(
         const std::filesystem::path& filePath,
         std::string_view debugName);
-    void DestroyImage(ImageObject imageObject);
+    std::tuple<
+        ImageObject,
+        ImageObject,
+        ImageObject,
+        ImageObject>
+    LoadIBLDataFromHDRI(
+        const std::filesystem::path& filePath,
+        std::string_view debugName);
 
     BufferObject CreateBuffer(
         BufferType bufferType,
@@ -110,14 +130,6 @@ namespace Swift
     void BlitToSwapchain(
         ImageObject srcImageObject,
         glm::uvec2 srcExtent);
-
-    void DispatchCompute(
-        u32 x,
-        u32 y,
-        u32 z);
-    void PushConstant(
-        const void* value,
-        u32 size);
 
     void BeginTransfer();
     void EndTransfer();
