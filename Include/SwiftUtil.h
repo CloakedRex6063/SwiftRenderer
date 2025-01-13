@@ -1,4 +1,5 @@
 #pragma once
+#include "SwiftStructs.hpp"
 
 namespace Swift
 {
@@ -9,9 +10,10 @@ namespace Swift::Util
 {
     namespace Visibility
     {
-        std::optional<BoundingSphere>
-        CreateBoundingSphereFromVertices(std::span<glm::vec3> positions);
+        BoundingSphere CreateBoundingSphereFromVertices(std::span<glm::vec3> positions);
+        BoundingAABB CreateBoundingAABBFromVertices(std::span<glm::vec3> positions);
         void UpdateFrustum(
+            Frustum& frustum,
             glm::mat4& viewMatrix,
             glm::vec3 cameraPos,
             float nearPlane,
@@ -19,6 +21,7 @@ namespace Swift::Util
             float fov,
             float aspect);
         bool IsInFrustum(
+            const Frustum& frustum,
             const BoundingSphere& sphere,
             const glm::mat4& worldTransform);
     } // namespace Visibility

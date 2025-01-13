@@ -486,7 +486,7 @@ namespace
     {
         const auto shaderCreateInfo = CreateShaderExt(
             computeCode,
-            vk::ShaderStageFlagBits::eVertex,
+            vk::ShaderStageFlagBits::eCompute,
             descriptor.setLayout,
             pushConstantRange);
 
@@ -1443,7 +1443,7 @@ namespace Swift::Vulkan
     {
         const auto pushConstantRange = vk::PushConstantRange()
                                            .setSize(pushConstantSize)
-                                           .setStageFlags(vk::ShaderStageFlagBits::eAllGraphics);
+                                           .setStageFlags(vk::ShaderStageFlagBits::eCompute);
 
         auto computeCode = FileIO::ReadBinaryFile(computePath);
 

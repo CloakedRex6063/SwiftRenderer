@@ -121,4 +121,30 @@ namespace Swift
             return *this;
         }
     };
+
+    struct BoundingAABB
+    {
+        glm::vec3 center{};
+        float padding{};
+        glm::vec3 extents{};
+        float padding2{};
+    };
+
+    struct Plane
+    {
+        glm::vec3 normal{};
+        float distance{};
+    };
+    
+    struct Frustum
+    {
+        Plane topFace;
+        Plane bottomFace;
+
+        Plane leftFace;
+        Plane rightFace;
+
+        Plane nearFace;
+        Plane farFace;
+    };
 }  // namespace Swift
