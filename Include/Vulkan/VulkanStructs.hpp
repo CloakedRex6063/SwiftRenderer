@@ -1,5 +1,4 @@
 #pragma once
-#include "dds.hpp"
 
 namespace Swift::Vulkan
 {
@@ -141,6 +140,7 @@ namespace Swift::Vulkan
         vk::Buffer buffer;
         VmaAllocation allocation{};
         VmaAllocationInfo allocationInfo{};
+        u32 size{};
 
         operator vk::Buffer() const { return buffer; }
 
@@ -157,6 +157,11 @@ namespace Swift::Vulkan
         Buffer& SetAllocationInfo(const VmaAllocationInfo& allocationInfo)
         {
             this->allocationInfo = allocationInfo;
+            return *this;
+        }
+        Buffer& SetSize(const u32 size)
+        {
+            this->size = size;
             return *this;
         }
 

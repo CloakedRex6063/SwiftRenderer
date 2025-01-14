@@ -8,7 +8,7 @@ set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 FILE(GLOB_RECURSE Sources Source/*.cpp)
 
 add_library(SwiftRender STATIC)
-target_include_directories(SwiftRender PUBLIC Include)
+target_include_directories(SwiftRender PUBLIC Include PRIVATE Source)
 target_sources(SwiftRender PUBLIC ${Sources})
 target_precompile_headers(SwiftRender PUBLIC Include/SwiftPCH.hpp)
 

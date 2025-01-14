@@ -3,7 +3,6 @@
 #include "Vulkan/VulkanRender.hpp"
 #include "Vulkan/VulkanStructs.hpp"
 #include "Vulkan/VulkanUtil.hpp"
-#include "dds.hpp"
 #ifdef SWIFT_IMGUI
 #include "imgui.h"
 #include "imgui_impl_vulkan.h"
@@ -15,19 +14,20 @@
 #define VMA_IMPLEMENTATION
 #include "vk_mem_alloc.h"
 
-#include <SwiftPCH.hpp>
-
 namespace
 {
     using namespace Swift;
     Vulkan::Context gContext;
+
     Vulkan::Queue gGraphicsQueue;
     Vulkan::Queue gComputeQueue;
     Vulkan::Queue gTransferQueue;
+
     Vulkan::Command gTransferCommand;
-    Vulkan::Command gGraphicsCommand; // For non render loop operations
     vk::Fence gTransferFence;
-    vk::Fence gGraphicsFence; // For non render loop operations
+
+    Vulkan::Command gGraphicsCommand; // For non render loop operations
+    vk::Fence gGraphicsFence;         // For non render loop operations
 
     Vulkan::Swapchain gSwapchain;
     Vulkan::BindlessDescriptor gDescriptor;
@@ -40,13 +40,45 @@ namespace
     u32 gCurrentShader = 0;
     std::vector<Vulkan::Image> gWriteableImages;
     std::vector<Vulkan::Image> gSamplerImages;
-    std::vector<Vulkan::Image> gSamplerCubeImages;
+    std::vector<Vulkan::Image> gTemporaryImages;
 
     std::vector<Vulkan::FrameData> gFrameData;
     u32 gCurrentFrame = 0;
     Vulkan::FrameData gCurrentFrameData;
 
     InitInfo gInitInfo;
+
+    u32 PackImageType(
+        u32 value,
+        const ImageType type)
+    {
+        return (value << 8) | (static_cast<u32>(type) & 0xFF); 
+    }
+
+    ImageType GetImageType(const u32 value)
+    {
+        return static_cast<ImageType>(value & 0xFF);
+    }
+
+    u32 GetImageIndex(const u32 value)
+    {
+        return (value >> 8) & 0xFFFFFF;
+    }
+
+    Vulkan::Image& GetRealImage(const u32 imageHandle)
+    {
+        const auto index = GetImageIndex(imageHandle);
+        switch (GetImageType(imageHandle))
+        {
+        case ImageType::eReadWrite:
+            return gSamplerImages[index];
+        case ImageType::eReadOnly:
+            return gWriteableImages[index];
+        case ImageType::eTemporary:
+            return gTemporaryImages[index];
+        }
+        return gSamplerImages[index];
+    }
 } // namespace
 
 using namespace Vulkan;
@@ -151,6 +183,7 @@ void Swift::Init(const InitInfo& initInfo)
 
 void Swift::Shutdown()
 {
+    [[maybe_unused]]
     const auto result = gContext.device.waitIdle();
     VK_ASSERT(result, "Failed to wait for device while cleaning up");
 
@@ -183,7 +216,7 @@ void Swift::Shutdown()
         image.Destroy(gContext);
     }
 
-    for (auto& image : gSamplerCubeImages)
+    for (auto& image : gTemporaryImages)
     {
         image.Destroy(gContext);
     }
@@ -321,7 +354,7 @@ void Swift::SetPolygonMode(PolygonMode polygonMode)
     Render::SetPolygonMode(gContext, commandBuffer, static_cast<vk::PolygonMode>(polygonMode));
 }
 
-ShaderObject Swift::CreateGraphicsShaderObject(
+ShaderHandle Swift::CreateGraphicsShaderHandle(
     const std::string_view vertexPath,
     const std::string_view fragmentPath,
     const std::string_view debugName,
@@ -337,10 +370,10 @@ ShaderObject Swift::CreateGraphicsShaderObject(
         debugName);
     gShaders.emplace_back(shader);
     const auto index = static_cast<u32>(gShaders.size() - 1);
-    return ShaderObject().SetIndex(index);
+    return index;
 }
 
-ShaderObject Swift::CreateComputeShaderObject(
+ShaderHandle Swift::CreateComputeShaderHandle(
     const std::string& computePath,
     const u32 pushConstantSize,
     const std::string_view debugName)
@@ -354,17 +387,17 @@ ShaderObject Swift::CreateComputeShaderObject(
         debugName);
     gShaders.emplace_back(shader);
     const auto index = static_cast<u32>(gShaders.size() - 1);
-    return ShaderObject().SetIndex(index);
+    return index;
 }
 
-void Swift::BindShader(const ShaderObject& shaderObject)
+void Swift::BindShader(const ShaderHandle& shaderHandle)
 {
     const auto& commandBuffer = Render::GetCommandBuffer(gCurrentFrameData);
-    const auto& shader = gShaders.at(shaderObject.index);
+    const auto& shader = gShaders.at(shaderHandle);
 
     Render::BindShader(commandBuffer, gContext, gDescriptor, shader, gInitInfo.bUsePipelines);
 
-    gCurrentShader = shaderObject.index;
+    gCurrentShader = shaderHandle;
 }
 
 void Swift::Draw(
@@ -389,17 +422,17 @@ void Swift::DrawIndexed(
 }
 
 void Swift::DrawIndexedIndirect(
-    const BufferObject& buffer,
+    const BufferHandle& buffer,
     const u64 offset,
     const u32 drawCount,
     const u32 stride)
 {
     const auto& commandBuffer = Render::GetCommandBuffer(gCurrentFrameData);
-    const auto& realBuffer = gBuffers[buffer.index];
+    const auto& realBuffer = gBuffers[buffer];
     commandBuffer.drawIndexedIndirect(realBuffer, offset, drawCount, stride);
 }
 
-ImageObject Swift::CreateWriteableImage(
+ImageHandle Swift::CreateWriteableImage(
     const glm::uvec2 size,
     const std::string_view debugName)
 {
@@ -428,10 +461,10 @@ ImageObject Swift::CreateWriteableImage(
         arrayElement,
         gContext);
 
-    return ImageObject().SetExtent(size).SetIndex(static_cast<u32>(gWriteableImages.size() - 1));
+    return PackImageType(arrayElement, ImageType::eReadWrite);
 }
 
-ImageObject Swift::LoadImageFromFile(
+ImageHandle Swift::LoadImageFromFile(
     const std::filesystem::path& filePath,
     const int mipLevel,
     const bool loadAllMipMaps,
@@ -444,7 +477,7 @@ ImageObject Swift::LoadImageFromFile(
     return image;
 }
 
-ImageObject Swift::LoadImageFromFileQueued(
+ImageHandle Swift::LoadImageFromFileQueued(
     const std::filesystem::path& filePath,
     const int mipLevel,
     const bool loadAllMipMaps,
@@ -473,12 +506,10 @@ ImageObject Swift::LoadImageFromFileQueued(
         gLinearSampler,
         arrayElement,
         gContext);
-    return ImageObject()
-        .SetExtent({image.extent.width, image.extent.height})
-        .SetIndex(arrayElement);
+    return PackImageType(arrayElement, ImageType::eReadOnly);
 }
 
-ImageObject Swift::LoadCubemapFromFile(
+ImageHandle Swift::LoadCubemapFromFile(
     const std::filesystem::path& filePath,
     const std::string_view debugName)
 {
@@ -500,72 +531,70 @@ ImageObject Swift::LoadCubemapFromFile(
     Swift::EndTransfer();
     staging.Destroy(gContext);
 
-    gSamplerCubeImages.emplace_back(image);
-    const auto arrayElement = static_cast<u32>(gSamplerCubeImages.size() - 1);
+    gSamplerImages.emplace_back(image);
+    const auto arrayElement = static_cast<u32>(gSamplerImages.size() - 1);
     Util::UpdateDescriptorSamplerCube(
         gDescriptor.set,
-        gSamplerCubeImages.back().imageView,
+        gSamplerImages.back().imageView,
         gLinearSampler,
         arrayElement,
         gContext);
 
-    return ImageObject()
-        .SetExtent({image.extent.width, image.extent.height})
-        .SetIndex(arrayElement);
+    return PackImageType(arrayElement, ImageType::eReadOnly);
 }
 
 std::tuple<
-    ImageObject,
-    ImageObject,
-    ImageObject,
-    ImageObject>
+    ImageHandle,
+    ImageHandle,
+    ImageHandle,
+    ImageHandle>
 Swift::LoadIBLDataFromHDRI(
     const std::filesystem::path& filePath,
     const std::string_view debugName)
 {
-    const auto hdriObject = Swift::LoadImageFromFile(filePath, 0, false, debugName);
+    const auto hdriHandle = Swift::LoadImageFromFile(filePath, 0, false, debugName);
 
     const auto [skybox, irradiance, specular, lut] = Init::EquiRectangularToCubemap(
         gContext,
         gDescriptor,
-        gSamplerCubeImages,
+        gSamplerImages,
         gLinearSampler,
         gGraphicsCommand,
         gGraphicsFence,
         gGraphicsQueue,
         gInitInfo.bUsePipelines,
-        hdriObject.index,
+        hdriHandle,
         debugName);
 
-    auto arrayElement = static_cast<u32>(gSamplerCubeImages.size() - 1);
+    auto arrayElement = static_cast<u32>(gSamplerImages.size() - 1);
     Util::UpdateDescriptorSamplerCube(
         gDescriptor.set,
-        gSamplerCubeImages.back().imageView,
+        gSamplerImages.back().imageView,
         gLinearSampler,
         arrayElement,
         gContext);
-    auto skyboxObject = ImageObject().SetIndex(arrayElement).SetType(ImageType::eReadOnly);
+    auto skyboxObject = PackImageType(arrayElement, ImageType::eReadOnly);
 
-    gSamplerCubeImages.emplace_back(irradiance);
-    arrayElement = static_cast<u32>(gSamplerCubeImages.size() - 1);
+    gSamplerImages.emplace_back(irradiance);
+    arrayElement = static_cast<u32>(gSamplerImages.size() - 1);
     Util::UpdateDescriptorSamplerCube(
         gDescriptor.set,
-        gSamplerCubeImages.back().imageView,
+        gSamplerImages.back().imageView,
         gLinearSampler,
         arrayElement,
         gContext);
-    auto irradianceObject = ImageObject().SetIndex(arrayElement).SetType(ImageType::eReadOnly);
+    auto irradianceHandle = PackImageType(arrayElement, ImageType::eReadOnly);
 
-    gSamplerCubeImages.emplace_back(specular);
-    arrayElement = static_cast<u32>(gSamplerCubeImages.size() - 1);
+    gSamplerImages.emplace_back(specular);
+    arrayElement = static_cast<u32>(gSamplerImages.size() - 1);
     Util::UpdateDescriptorSamplerCube(
         gDescriptor.set,
-        gSamplerCubeImages.back().imageView,
+        gSamplerImages.back().imageView,
         gLinearSampler,
         arrayElement,
         gContext);
-    auto specularObject = ImageObject().SetIndex(arrayElement).SetType(ImageType::eReadOnly);
-    
+    auto specularHandle = PackImageType(arrayElement, ImageType::eReadOnly);
+
     gSamplerImages.emplace_back(lut);
     arrayElement = static_cast<u32>(gSamplerImages.size() - 1);
     Util::UpdateDescriptorSampler(
@@ -574,26 +603,25 @@ Swift::LoadIBLDataFromHDRI(
         gLinearSampler,
         arrayElement,
         gContext);
-    
-    auto lutObject = ImageObject().SetIndex(arrayElement).SetType(ImageType::eReadOnly);
 
-    return {skyboxObject, irradianceObject, specularObject, lutObject};
+    auto lutHandle = PackImageType(arrayElement, ImageType::eReadOnly);
+
+    return {skyboxObject, irradianceHandle, specularHandle, lutHandle};
 }
 
-void Swift::DestroyImage(const ImageObject imageObject)
+u32 Swift::GetImageArrayIndex(const ImageHandle imageHandle)
 {
-    auto& realImage = gWriteableImages.at(imageObject.index);
-    const auto it = std::ranges::find_if(
-        gWriteableImages,
-        [&](const Image& image)
-        {
-            return image.image == realImage.image;
-        });
-    gWriteableImages.erase(it);
+    return GetImageIndex(imageHandle);
+}
+
+void Swift::DestroyImage(const ImageHandle imageHandle)
+{
+    auto& realImage = GetRealImage(imageHandle);
+    gWriteableImages.erase(gWriteableImages.begin() + GetImageIndex(imageHandle));
     realImage.Destroy(gContext);
 }
 
-BufferObject Swift::CreateBuffer(
+BufferHandle Swift::CreateBuffer(
     const BufferType bufferType,
     const u32 size,
     const std::string_view debugName)
@@ -620,12 +648,12 @@ BufferObject Swift::CreateBuffer(
         Init::CreateBuffer(gContext, gGraphicsQueue.index, size, bufferUsageFlags, debugName);
     gBuffers.emplace_back(buffer);
     const auto index = static_cast<u32>(gBuffers.size() - 1);
-    return BufferObject().SetIndex(index).SetSize(size);
+    return index;
 }
 
-void Swift::DestroyBuffer(const BufferObject bufferObject)
+void Swift::DestroyBuffer(const BufferHandle bufferHandle)
 {
-    const auto& realBuffer = gBuffers.at(bufferObject.index);
+    const auto& realBuffer = gBuffers.at(bufferHandle);
     const auto it = std::ranges::find_if(
         gBuffers,
         [&](const Buffer& buffer)
@@ -636,25 +664,25 @@ void Swift::DestroyBuffer(const BufferObject bufferObject)
     realBuffer.Destroy(gContext);
 }
 
-void* Swift::MapBuffer(const BufferObject bufferObject)
+void* Swift::MapBuffer(const BufferHandle bufferHandle)
 {
-    const auto& realBuffer = gBuffers.at(bufferObject.index);
+    const auto& realBuffer = gBuffers.at(bufferHandle);
     return Util::MapBuffer(gContext, realBuffer);
 }
 
-void Swift::UnmapBuffer(const BufferObject bufferObject)
+void Swift::UnmapBuffer(const BufferHandle bufferHandle)
 {
-    const auto& realBuffer = gBuffers.at(bufferObject.index);
+    const auto& realBuffer = gBuffers.at(bufferHandle);
     Util::UnmapBuffer(gContext, realBuffer);
 }
 
 void Swift::UploadToBuffer(
-    const BufferObject& buffer,
+    const BufferHandle& buffer,
     const void* data,
     const u64 offset,
     const u64 size)
 {
-    const auto& realBuffer = gBuffers.at(buffer.index);
+    const auto& realBuffer = gBuffers.at(buffer);
     Util::UploadToBuffer(gContext, data, realBuffer, offset, size);
 }
 
@@ -668,36 +696,36 @@ void Swift::UploadToMapped(
 }
 
 void Swift::UpdateSmallBuffer(
-    const BufferObject& buffer,
+    const BufferHandle& buffer,
     const u64 offset,
     const u64 size,
     const void* data)
 {
-    const auto& realBuffer = gBuffers.at(buffer.index);
+    const auto& realBuffer = gBuffers.at(buffer);
     const auto& commandBuffer = Render::GetCommandBuffer(gCurrentFrameData);
     commandBuffer.updateBuffer(realBuffer, offset, size, data);
 }
 
-u64 Swift::GetBufferAddress(const BufferObject& buffer)
+u64 Swift::GetBufferAddress(const BufferHandle& buffer)
 {
-    const auto& realBuffer = gBuffers.at(buffer.index);
+    const auto& realBuffer = gBuffers.at(buffer);
     const auto addressInfo = vk::BufferDeviceAddressInfo().setBuffer(realBuffer.buffer);
     return gContext.device.getBufferAddress(addressInfo);
 }
 
-void Swift::BindIndexBuffer(const BufferObject& bufferObject)
+void Swift::BindIndexBuffer(const BufferHandle& bufferObject)
 {
-    const auto& realBuffer = gBuffers.at(bufferObject.index);
+    const auto& realBuffer = gBuffers.at(bufferObject);
     const auto& commandBuffer = Render::GetCommandBuffer(gCurrentFrameData);
     commandBuffer.bindIndexBuffer(realBuffer, 0, vk::IndexType::eUint32);
 }
 
 void Swift::ClearImage(
-    const ImageObject image,
+    const ImageHandle image,
     const glm::vec4 color)
 {
     const auto& commandBuffer = Render::GetCommandBuffer(gCurrentFrameData);
-    auto& realImage = Util::GetRealImage(image, gSamplerImages, gWriteableImages);
+    auto& realImage = GetRealImage(image);
     const auto generalBarrier = Util::ImageBarrier(
         vk::ImageLayout::eUndefined,
         vk::ImageLayout::eGeneral,
@@ -738,15 +766,15 @@ void Swift::ClearSwapchainImage(const glm::vec4 color)
 }
 
 void Swift::CopyImage(
-    const ImageObject srcImageObject,
-    const ImageObject dstImageObject,
+    const ImageHandle srcImageHandle,
+    const ImageHandle dstImageHandle,
     const glm::uvec2 extent)
 {
     const auto& commandBuffer = Render::GetCommandBuffer(gCurrentFrameData);
     constexpr auto srcLayout = vk::ImageLayout::eTransferSrcOptimal;
     constexpr auto dstLayout = vk::ImageLayout::eTransferDstOptimal;
-    auto& srcImage = Util::GetRealImage(srcImageObject, gSamplerImages, gWriteableImages);
-    auto& dstImage = Util::GetRealImage(dstImageObject, gSamplerImages, gWriteableImages);
+    auto& srcImage = GetRealImage(srcImageHandle);
+    auto& dstImage = GetRealImage(dstImageHandle);
     const auto srcBarrier = Util::ImageBarrier(
         srcImage.currentLayout,
         srcLayout,
@@ -762,13 +790,13 @@ void Swift::CopyImage(
 }
 
 void Swift::CopyToSwapchain(
-    const ImageObject srcImageObject,
+    const ImageHandle srcImageHandle,
     const glm::uvec2 extent)
 {
     const auto& commandBuffer = Render::GetCommandBuffer(gCurrentFrameData);
     constexpr auto srcLayout = vk::ImageLayout::eTransferSrcOptimal;
     constexpr auto dstLayout = vk::ImageLayout::eTransferDstOptimal;
-    auto& srcImage = Util::GetRealImage(srcImageObject, gSamplerImages, gWriteableImages);
+    auto& srcImage = GetRealImage(srcImageHandle);
     auto& dstImage = Render::GetSwapchainImage(gSwapchain);
     const auto srcBarrier = Util::ImageBarrier(
         srcImage.currentLayout,
@@ -785,19 +813,17 @@ void Swift::CopyToSwapchain(
 }
 
 void Swift::BlitImage(
-    ImageObject srcImageObject,
-    ImageObject dstImageObject,
-    glm::uvec2 srcOffset,
-    glm::uvec2 dstOffset)
+    const ImageHandle srcImageHandle,
+    const ImageHandle dstImageHandle,
+    const glm::uvec2 srcOffset,
+    const glm::uvec2 dstOffset)
 {
     const auto commandBuffer = Render::GetCommandBuffer(gCurrentFrameData);
     constexpr auto srcLayout = vk::ImageLayout::eTransferSrcOptimal;
     constexpr auto dstLayout = vk::ImageLayout::eTransferDstOptimal;
 
-    auto& srcImage = Util::GetRealImage(srcImageObject, gSamplerImages, gWriteableImages);
-    ;
-    auto& dstImage = Util::GetRealImage(dstImageObject, gSamplerImages, gWriteableImages);
-    ;
+    auto& srcImage = GetRealImage(srcImageHandle);
+    auto& dstImage = GetRealImage(dstImageHandle);
     const auto srcBarrier = Util::ImageBarrier(
         srcImage.currentLayout,
         srcLayout,
@@ -820,14 +846,14 @@ void Swift::BlitImage(
 }
 
 void Swift::BlitToSwapchain(
-    const ImageObject srcImageObject,
+    const ImageHandle srcImageHandle,
     const glm::uvec2 srcExtent)
 {
     const auto commandBuffer = Render::GetCommandBuffer(gCurrentFrameData);
     constexpr auto srcLayout = vk::ImageLayout::eTransferSrcOptimal;
     constexpr auto dstLayout = vk::ImageLayout::eTransferDstOptimal;
 
-    auto& srcImage = Util::GetRealImage(srcImageObject, gSamplerImages, gWriteableImages);
+    auto& srcImage = GetRealImage(srcImageHandle);
     auto& dstImage = Render::GetSwapchainImage(gSwapchain);
     const auto srcBarrier = Util::ImageBarrier(
         srcImage.currentLayout,

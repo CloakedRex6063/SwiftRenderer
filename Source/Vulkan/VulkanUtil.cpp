@@ -3,6 +3,7 @@
 #include "Vulkan/VulkanConstants.hpp"
 #include "Vulkan/VulkanInit.hpp"
 #include "Vulkan/VulkanStructs.hpp"
+#include "dds.hpp"
 
 namespace Swift::Vulkan
 {
@@ -19,6 +20,7 @@ namespace Swift::Vulkan
         {
             if (family.queueFlags & vk::QueueFlagBits::eGraphics && !graphicsFamily.has_value())
             {
+                [[maybe_unused]]
                 const auto [result, support] = physicalDevice.getSurfaceSupportKHR(index, surface);
                 VK_ASSERT(result, "Failed to get surface for queue family");
                 graphicsFamily = static_cast<u32>(index);
@@ -61,27 +63,13 @@ namespace Swift::Vulkan
         return {mipWidth, mipHeight};
     }
 
-    Image& Util::GetRealImage(
-        const ImageObject image,
-        std::vector<Image>& readImages,
-        std::vector<Image>& writeImages)
-    {
-        switch (image.type)
-        {
-        case ImageType::eReadWrite:
-            return writeImages[image.index];
-        case ImageType::eReadOnly:
-            return readImages[image.index];
-        }
-        return readImages[image.index];
-    }
-
     void Util::HandleSubOptimalSwapchain(
         const u32 graphicsFamily,
         const Context& context,
         Swapchain& swapchain,
         const vk::Extent2D extent)
     {
+        [[maybe_unused]]
         const auto result = context.device.waitIdle();
         VK_ASSERT(result, "Failed to wait for device while cleaning up");
         swapchain.Destroy(context);
@@ -122,6 +110,7 @@ namespace Swift::Vulkan
                                     .setCommandBufferInfos(commandInfo)
                                     .setWaitSemaphoreInfos(waitInfo)
                                     .setSignalSemaphoreInfos(signalInfo);
+        [[maybe_unused]]
         const auto result = queue.submit2(submitInfo, fence);
         VK_ASSERT(result, "Failed to submit queue");
     }
@@ -134,6 +123,7 @@ namespace Swift::Vulkan
         auto commandInfo =
             vk::CommandBufferSubmitInfo().setDeviceMask(1).setCommandBuffer(commandBuffer);
         const auto submitInfo = vk::SubmitInfo2().setCommandBufferInfos(commandInfo);
+        [[maybe_unused]]
         const auto result = queue.submit2(submitInfo, fence);
         VK_ASSERT(result, "Failed to submit queue");
     }
@@ -204,12 +194,12 @@ namespace Swift::Vulkan
     }
 
     vk::ImageMemoryBarrier2 Util::ImageBarrier(
-        vk::ImageLayout oldLayout,
-        vk::ImageLayout newLayout,
+        const vk::ImageLayout oldLayout,
+        const vk::ImageLayout newLayout,
         Image& image,
-        vk::ImageAspectFlags flags,
-        u32 mipCount,
-        u32 arrayLayers)
+        const vk::ImageAspectFlags flags,
+        const u32 mipCount,
+        const u32 arrayLayers)
     {
         const auto imageBarrier =
             vk::ImageMemoryBarrier2()
@@ -251,6 +241,7 @@ namespace Swift::Vulkan
         const Buffer& buffer)
     {
         void* mapped;
+        [[maybe_unused]]
         const auto result = vmaMapMemory(context.allocator, buffer.allocation, &mapped);
         assert(result == VK_SUCCESS && "Failed to map buffer");
         return mapped;

@@ -14,15 +14,6 @@ namespace
         };
     };
 
-    glm::vec3 GetScaleFromMatrix(const glm::mat4& matrix)
-    {
-        return {
-            glm::length(glm::vec3(matrix[0])),
-            glm::length(glm::vec3(matrix[1])),
-            glm::length(glm::vec3(matrix[2])),
-        };
-    }
-
     bool IsInsidePlane(
         const Swift::Plane& plane,
         const Swift::BoundingSphere& sphere)

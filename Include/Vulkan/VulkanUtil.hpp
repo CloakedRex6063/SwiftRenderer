@@ -1,13 +1,14 @@
 #pragma once
 #include "VulkanStructs.hpp"
+#include "SwiftStructs.hpp"
 
-namespace Swift
-{
-    struct ImageObject;
-}
 namespace Swift::Vulkan
 {
     struct Context;
+}
+namespace dds
+{
+    struct Header;
 }
 namespace Swift::Vulkan::Util
 {
@@ -22,11 +23,6 @@ namespace Swift::Vulkan::Util
     vk::Extent2D GetMipExtent(
         vk::Extent2D extent,
         u32 mipLevel);
-
-    Image& GetRealImage(
-        ImageObject image,
-        std::vector<Image>& readImages,
-        std::vector<Image>& writeImages);
 
     inline u32 GetSwapchainImageCount(
         const vk::PhysicalDevice gpu,
@@ -61,6 +57,7 @@ namespace Swift::Vulkan::Util
         const vk::Device& device,
         const vk::Fence fence)
     {
+        [[maybe_unused]]
         const auto result = device.resetFences(fence);
         VK_ASSERT(result, "Failed to reset fence");
     }
@@ -69,21 +66,25 @@ namespace Swift::Vulkan::Util
         const vk::Fence fence,
         const u64 timeout = std::numeric_limits<u64>::max())
     {
+        [[maybe_unused]]
         const auto result = device.waitForFences(fence, true, timeout);
         VK_ASSERT(result, "Failed to wait fences");
     }
 
     inline void BeginOneTimeCommand(const vk::CommandBuffer commandBuffer)
     {
-        auto result = commandBuffer.reset();
-        VK_ASSERT(result, "Failed to reset command buffer");
+        [[maybe_unused]]
+        const auto resetResult = commandBuffer.reset();
+        VK_ASSERT(resetResult, "Failed to reset command buffer");
         constexpr auto beginInfo =
             vk::CommandBufferBeginInfo().setFlags(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
-        result = commandBuffer.begin(beginInfo);
-        VK_ASSERT(result, "Failed to begin command buffer");
+        [[maybe_unused]]
+        const auto beginResult = commandBuffer.begin(beginInfo);
+        VK_ASSERT(beginResult, "Failed to begin command buffer");
     }
     inline void EndCommand(const vk::CommandBuffer commandBuffer)
     {
+        [[maybe_unused]]
         const auto result = commandBuffer.end();
         VK_ASSERT(result, "Failed to end command buffer");
     }
@@ -95,6 +96,7 @@ namespace Swift::Vulkan::Util
         const VkDeviceSize offset,
         const VkDeviceSize size)
     {
+        [[maybe_unused]]
         const auto result =
             vmaCopyMemoryToAllocation(context.allocator, data, buffer.allocation, offset, size);
         assert(result == VK_SUCCESS && "Failed to copy memory to buffer");
@@ -180,6 +182,7 @@ namespace Swift::Vulkan::Util
         nameInfo.objectType = object.objectType;
         nameInfo.objectHandle = reinterpret_cast<uint64_t>(static_cast<typename T::CType>(object));
 
+        [[maybe_unused]]
         auto result = context.device.setDebugUtilsObjectNameEXT(&nameInfo, context.dynamicLoader);
         VK_ASSERT(result, "Failed to set debug object name");
     }

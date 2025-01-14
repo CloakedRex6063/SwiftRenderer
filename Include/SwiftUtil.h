@@ -24,5 +24,14 @@ namespace Swift::Util
             const Frustum& frustum,
             const BoundingSphere& sphere,
             const glm::mat4& worldTransform);
+
+        inline glm::vec3 GetScaleFromMatrix(const glm::mat4& matrix)
+        {
+            return {
+                glm::length(glm::vec3(matrix[0])),
+                glm::length(glm::vec3(matrix[1])),
+                glm::length(glm::vec3(matrix[2])),
+            };
+        }
     } // namespace Visibility
 } // namespace Swift::Util

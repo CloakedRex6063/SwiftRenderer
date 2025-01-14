@@ -323,7 +323,7 @@ namespace
                                             .setMultiDrawIndirect(true)
                                             .setShaderSampledImageArrayDynamicIndexing(true)
                                             .setShaderStorageBufferArrayDynamicIndexing(true)
-                                            .setShaderUniformBufferArrayDynamicIndexing(true);
+                                            .setShaderUniformBufferArrayDynamicIndexing(true).setShaderFloat64(true);
 
         auto& deviceFeatures2 =
             initInfo.bUsePipelines
@@ -1178,23 +1178,10 @@ namespace Swift::Vulkan
     {
         const auto props = context.gpu.getProperties();
 
-        auto alignedSize = size;
-        if (bufferUsageFlags & vk::BufferUsageFlagBits::eUniformBuffer)
-        {
-            const auto uboAlignment = props.limits.minUniformBufferOffsetAlignment;
-            alignedSize = Util::PadAlignment(size, uboAlignment);
-        }
-
-        if (bufferUsageFlags & vk::BufferUsageFlagBits::eStorageBuffer)
-        {
-            const auto storageAlignment = props.limits.minStorageBufferOffsetAlignment;
-            alignedSize = Util::PadAlignment(size, storageAlignment);
-        }
-
         const auto createInfo = vk::BufferCreateInfo()
                                     .setQueueFamilyIndices(queueFamilyIndex)
                                     .setSharingMode(vk::SharingMode::eExclusive)
-                                    .setSize(alignedSize)
+                                    .setSize(size)
                                     .setUsage(bufferUsageFlags);
         const auto cCreateInfo = static_cast<VkBufferCreateInfo>(createInfo);
         constexpr VmaAllocationCreateInfo allocCreateInfo{.usage = VMA_MEMORY_USAGE_CPU_TO_GPU};
