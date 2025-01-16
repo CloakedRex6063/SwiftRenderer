@@ -34,3 +34,6 @@ endif ()
 if (SwiftImGuiGLFW)
     target_link_libraries(imgui PUBLIC glfw)
 endif ()
+
+add_subdirectory(LZ4/build/cmake)
+target_link_libraries(SwiftRender PUBLIC lz4_static)

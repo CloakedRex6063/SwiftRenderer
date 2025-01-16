@@ -34,4 +34,57 @@ namespace Swift::Util
             };
         }
     } // namespace Visibility
+
+    namespace Compression
+    {
+        enum class Error
+        {
+            eNone,
+            eFileNotFound,
+            eCompressionFailed,
+            eNotAFolder,
+        };
+
+        [[nodiscard]]
+        std::expected<
+            int,
+            Error> CompressFile(const std::filesystem::path& filePath);
+        
+        [[nodiscard]]
+        std::expected<
+            std::vector<int>,
+            Error>
+        BatchCompress(
+            const std::filesystem::path& folderPath,
+            bool recursive);
+    } // namespace Compression
+
+    namespace Performance
+    {
+        void BeginTimer();
+        float EndTimer();
+    }
+
+    template<typename T> std::string_view GetErrorMessage(T error)
+    {
+        if constexpr (std::is_same_v<T, Compression::Error>)
+        {
+            switch (static_cast<Compression::Error>(error))
+            {
+            case Compression::Error::eNone:
+                return "";
+                break;
+            case Compression::Error::eFileNotFound:
+                return "File not found at given location or corrupt";
+                break;
+            case Compression::Error::eCompressionFailed:
+                return "Compression failed";
+                break;
+            case Compression::Error::eNotAFolder:
+                return "Given destination was not a folder.";
+                break;
+            }
+        }
+        return "";
+    }
 } // namespace Swift::Util

@@ -18,7 +18,7 @@ foreach(GLSL ${GLSL_SOURCE_FILES})
     message(STATUS COMMAND " " ${GLSL_VALIDATOR} -V " " ${SHADER_STAGE} " " ${GLSL} " " --target-env spirv1.6 " " -o " " ${SPIRV})
     add_custom_command(
             OUTPUT ${SPIRV}
-            COMMAND ${GLSL_VALIDATOR} -V ${SHADER_STAGE} ${GLSL} --target-env spirv1.6 -o ${SPIRV}
+            COMMAND ${GLSL_VALIDATOR} -V ${SHADER_STAGE} ${GLSL} --target-env spirv1.6 -o ${SPIRV} -gVS
             DEPENDS ${GLSL})
     list(APPEND SPIRV_BINARY_FILES ${SPIRV})
 endforeach()

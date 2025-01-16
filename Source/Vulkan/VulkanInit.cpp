@@ -180,7 +180,7 @@ namespace
                 continue;
             }
 
-            std::vector extensions{VK_KHR_SWAPCHAIN_EXTENSION_NAME};
+            std::vector extensions{VK_KHR_SWAPCHAIN_EXTENSION_NAME, VK_KHR_SHADER_RELAXED_EXTENDED_INSTRUCTION_EXTENSION_NAME};
             if (initInfo.bUsePipelines)
             {
                 extensions.emplace_back(VK_EXT_EXTENDED_DYNAMIC_STATE_3_EXTENSION_NAME);
@@ -243,7 +243,7 @@ namespace
         const Swift::Vulkan::Context& context,
         const Swift::InitInfo& initInfo)
     {
-        std::vector extensionNames{VK_KHR_SWAPCHAIN_EXTENSION_NAME};
+        std::vector extensionNames{VK_KHR_SWAPCHAIN_EXTENSION_NAME, VK_KHR_SHADER_RELAXED_EXTENDED_INSTRUCTION_EXTENSION_NAME};
         if (initInfo.bUsePipelines)
         {
             extensionNames.emplace_back(VK_EXT_EXTENDED_DYNAMIC_STATE_3_EXTENSION_NAME);
