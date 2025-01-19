@@ -818,7 +818,7 @@ namespace Swift::Vulkan
         const Queue transferQueue,
         const Command transferCommand,
         const std::filesystem::path& filePath,
-        int mipLevel,
+        int minMipLevel,
         const bool loadAllMips,
         const std::string_view debugName)
     {
@@ -828,26 +828,36 @@ namespace Swift::Vulkan
             vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst);
         auto imageViewCreateInfo = header.GetVulkanImageViewCreateInfo();
 
-        if (mipLevel == -1)
+        if (minMipLevel == -1)
         {
-            mipLevel = static_cast<int>(header.MipLevels()) - 1;
+            minMipLevel = static_cast<int>(header.MipLevels()) - 1;
+        }
+        minMipLevel = std::clamp(minMipLevel, 0, static_cast<int>(header.MipLevels()) - 1);
+
+        const auto mipCount = loadAllMips ? header.MipLevels() - minMipLevel : 1;
+        if (loadAllMips)
+        {
+            imageCreateInfo.mipLevels = mipCount;
+            imageCreateInfo.extent = Util::GetMipExtent(imageCreateInfo.extent, minMipLevel);
+            imageViewCreateInfo.subresourceRange.levelCount = mipCount;
         }
 
         if (!loadAllMips)
         {
             imageCreateInfo.mipLevels = 1;
-            imageCreateInfo.extent = Util::GetMipExtent(imageCreateInfo.extent, mipLevel);
+            imageCreateInfo.extent = Util::GetMipExtent(imageCreateInfo.extent, minMipLevel);
             imageViewCreateInfo.subresourceRange.levelCount = 1;
         }
 
         auto image = CreateImage(context, imageCreateInfo, imageViewCreateInfo, debugName);
-
+        
+        
         const auto srcImageBarrier = Util::ImageBarrier(
             image.currentLayout,
             vk::ImageLayout::eTransferDstOptimal,
             image,
             vk::ImageAspectFlagBits::eColor,
-            loadAllMips ? header.MipLevels() : 1,
+            mipCount,
             imageCreateInfo.arrayLayers);
         Util::PipelineBarrier(transferCommand, srcImageBarrier);
 
@@ -857,7 +867,7 @@ namespace Swift::Vulkan
             transferQueue.index,
             header,
             filePath.string(),
-            mipLevel,
+            minMipLevel,
             loadAllMips,
             image);
 
@@ -866,7 +876,7 @@ namespace Swift::Vulkan
             vk::ImageLayout::eShaderReadOnlyOptimal,
             image,
             vk::ImageAspectFlagBits::eColor,
-            loadAllMips ? header.MipLevels() : 1,
+            mipCount,
             imageCreateInfo.arrayLayers);
         Util::PipelineBarrier(transferCommand, dstImageBarrier);
 

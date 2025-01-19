@@ -20,8 +20,8 @@ namespace Swift::Vulkan
         {
             if (family.queueFlags & vk::QueueFlagBits::eGraphics && !graphicsFamily.has_value())
             {
-                [[maybe_unused]]
-                const auto [result, support] = physicalDevice.getSurfaceSupportKHR(index, surface);
+                [[maybe_unused]] const auto [result, support] =
+                    physicalDevice.getSurfaceSupportKHR(index, surface);
                 VK_ASSERT(result, "Failed to get surface for queue family");
                 graphicsFamily = static_cast<u32>(index);
                 indices.emplace_back(static_cast<u32>(index));
@@ -210,7 +210,7 @@ namespace Swift::Vulkan
                 .setDstStageMask(vk::PipelineStageFlagBits2::eAllCommands)
                 .setOldLayout(oldLayout)
                 .setNewLayout(newLayout)
-                .setSubresourceRange(GetImageSubresourceRange(flags, mipCount, 0,arrayLayers))
+                .setSubresourceRange(GetImageSubresourceRange(flags, mipCount, 0, arrayLayers))
                 .setImage(image);
         image.currentLayout = newLayout;
         return imageBarrier;
@@ -268,8 +268,9 @@ namespace Swift::Vulkan
         u32 imageSize;
         if (loadAllMips)
         {
-            start = ddsImage.DataOffset();
-            imageSize = ddsImage.DataSize();
+            start = ddsImage.MipOffset(mipLevel);
+            imageSize =
+                ddsImage.DataSize() - (ddsImage.MipOffset(mipLevel) - ddsImage.DataOffset());
         }
         else
         {
@@ -309,7 +310,7 @@ namespace Swift::Vulkan
         const vk::CommandBuffer commandBuffer,
         const vk::Buffer buffer,
         const dds::Header& ddsImage,
-        const u32 mipLevel,
+        const u32 minMipLevel,
         const bool loadAllMips,
         const vk::Image image)
     {
@@ -320,7 +321,7 @@ namespace Swift::Vulkan
             u32 offset = 0;
             for (u32 layer = 0; layer < ddsImage.ArraySize(); layer++)
             {
-                for (int i = 0; i < ddsImage.MipLevels(); i++)
+                for (int i = minMipLevel; i < ddsImage.MipLevels(); i++)
                 {
                     vk::Extent3D mipExtent = {
                         std::max(1u, extent.width >> i),
@@ -330,7 +331,7 @@ namespace Swift::Vulkan
                                                      .setImageExtent(mipExtent)
                                                      .setImageSubresource(GetImageSubresourceLayers(
                                                          vk::ImageAspectFlagBits::eColor,
-                                                         i,
+                                                         i - minMipLevel,
                                                          1,
                                                          layer))
                                                      .setBufferOffset(offset);
@@ -343,7 +344,7 @@ namespace Swift::Vulkan
         {
             for (int i = 0; i < ddsImage.ArraySize(); i++)
             {
-                const auto extent = Util::GetMipExtent(ddsImage.GetVulkanExtent(), mipLevel);
+                const auto extent = Util::GetMipExtent(ddsImage.GetVulkanExtent(), minMipLevel);
                 const auto bufferImageCopy =
                     vk::BufferImageCopy2().setImageExtent(extent).setImageSubresource(
                         GetImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, 0, 1, i));
