@@ -291,6 +291,7 @@ namespace Swift::Vulkan
             queueIndex,
             imageSize,
             vk::BufferUsageFlagBits::eTransferSrc,
+            false,
             "staging");
 
         std::ifstream file((filePath.data()), std::ios::binary);

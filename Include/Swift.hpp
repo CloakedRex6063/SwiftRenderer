@@ -41,18 +41,17 @@ namespace Swift
         std::string_view debugName,
         u32 pushConstantSize = 0);
 
-    
     ShaderHandle CreateComputeShaderHandle(
         const std::string& computePath,
         u32 pushConstantSize,
         std::string_view debugName);
-    
+
     void BindShader(const ShaderHandle& shaderObject);
-    
+
     void PushConstant(
-    const void* value,
-    u32 size);
-    
+        const void* value,
+        u32 size);
+
     void DispatchCompute(
         u32 x,
         u32 y,
@@ -109,6 +108,12 @@ namespace Swift
         u64 offset,
         u64 size,
         const void* data);
+    void CopyBuffer(
+        BufferHandle srcBufferHandle,
+        BufferHandle dstBufferHandle,
+        u64 srcOffset,
+        u64 dstOffset,
+        u64 size);
 
     u64 GetBufferAddress(const BufferHandle& buffer);
     void BindIndexBuffer(const BufferHandle& bufferObject);

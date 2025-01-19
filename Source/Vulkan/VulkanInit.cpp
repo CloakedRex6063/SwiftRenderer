@@ -180,7 +180,9 @@ namespace
                 continue;
             }
 
-            std::vector extensions{VK_KHR_SWAPCHAIN_EXTENSION_NAME, VK_KHR_SHADER_RELAXED_EXTENDED_INSTRUCTION_EXTENSION_NAME};
+            std::vector extensions{
+                VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+                VK_KHR_SHADER_RELAXED_EXTENDED_INSTRUCTION_EXTENSION_NAME};
             if (initInfo.bUsePipelines)
             {
                 extensions.emplace_back(VK_EXT_EXTENDED_DYNAMIC_STATE_3_EXTENSION_NAME);
@@ -243,7 +245,9 @@ namespace
         const Swift::Vulkan::Context& context,
         const Swift::InitInfo& initInfo)
     {
-        std::vector extensionNames{VK_KHR_SWAPCHAIN_EXTENSION_NAME, VK_KHR_SHADER_RELAXED_EXTENDED_INSTRUCTION_EXTENSION_NAME};
+        std::vector extensionNames{
+            VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+            VK_KHR_SHADER_RELAXED_EXTENDED_INSTRUCTION_EXTENSION_NAME};
         if (initInfo.bUsePipelines)
         {
             extensionNames.emplace_back(VK_EXT_EXTENDED_DYNAMIC_STATE_3_EXTENSION_NAME);
@@ -323,7 +327,8 @@ namespace
                                             .setMultiDrawIndirect(true)
                                             .setShaderSampledImageArrayDynamicIndexing(true)
                                             .setShaderStorageBufferArrayDynamicIndexing(true)
-                                            .setShaderUniformBufferArrayDynamicIndexing(true).setShaderFloat64(true);
+                                            .setShaderUniformBufferArrayDynamicIndexing(true)
+                                            .setShaderFloat64(true);
 
         auto& deviceFeatures2 =
             initInfo.bUsePipelines
@@ -917,6 +922,7 @@ namespace Swift::Vulkan
             graphicsQueue.index,
             captureViews.size() * sizeof(glm::mat4),
             vk::BufferUsageFlagBits::eShaderDeviceAddress,
+            false,
             "Capture Views Buffer");
         Util::UploadToBuffer(
             context,
@@ -1174,9 +1180,12 @@ namespace Swift::Vulkan
         u32 queueFamilyIndex,
         const vk::DeviceSize size,
         const vk::BufferUsageFlags bufferUsageFlags,
+        const bool readback,
         const std::string_view debugName)
     {
         const auto props = context.gpu.getProperties();
+        const auto uboAlignment = props.limits.minUniformBufferOffsetAlignment;
+        const auto storageAlignment = props.limits.minStorageBufferOffsetAlignment;
 
         const auto createInfo = vk::BufferCreateInfo()
                                     .setQueueFamilyIndices(queueFamilyIndex)
@@ -1184,15 +1193,34 @@ namespace Swift::Vulkan
                                     .setSize(size)
                                     .setUsage(bufferUsageFlags);
         const auto cCreateInfo = static_cast<VkBufferCreateInfo>(createInfo);
-        constexpr VmaAllocationCreateInfo allocCreateInfo{.usage = VMA_MEMORY_USAGE_CPU_TO_GPU};
+        const auto isUBO = bufferUsageFlags & vk::BufferUsageFlagBits::eUniformBuffer;
+
+        VmaAllocationCreateInfo allocCreateInfo;
+        if (readback)
+        {
+            allocCreateInfo = {
+                .flags =
+                    VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT,
+                .usage = VMA_MEMORY_USAGE_AUTO_PREFER_HOST,
+                .requiredFlags = VK_MEMORY_PROPERTY_HOST_CACHED_BIT |
+                                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                                 VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+            };
+        }
+        else
+        {
+            allocCreateInfo = {.usage = VMA_MEMORY_USAGE_CPU_TO_GPU};
+        }
 
         VkBuffer buffer;
         VmaAllocation allocation;
         VmaAllocationInfo info;
-        const auto result = vmaCreateBuffer(
+        [[maybe_unused]]
+        const auto result = vmaCreateBufferWithAlignment(
             context.allocator,
             &cCreateInfo,
             &allocCreateInfo,
+            isUBO ? uboAlignment : storageAlignment,
             &buffer,
             &allocation,
             &info);

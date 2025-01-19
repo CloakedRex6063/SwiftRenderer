@@ -41,6 +41,7 @@ namespace Swift::Vulkan::Init
         u32 queueFamilyIndex,
         vk::DeviceSize size,
         vk::BufferUsageFlags bufferUsageFlags,
+        bool readback,
         std::string_view debugName);
 
     vk::Fence CreateFence(

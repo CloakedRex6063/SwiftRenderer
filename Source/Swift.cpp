@@ -52,7 +52,7 @@ namespace
         u32 value,
         const ImageType type)
     {
-        return (value << 8) | (static_cast<u32>(type) & 0xFF); 
+        return (value << 8) | (static_cast<u32>(type) & 0xFF);
     }
 
     ImageType GetImageType(const u32 value)
@@ -626,8 +626,10 @@ BufferHandle Swift::CreateBuffer(
     const u32 size,
     const std::string_view debugName)
 {
-    vk::BufferUsageFlags bufferUsageFlags =
-        vk::BufferUsageFlagBits::eShaderDeviceAddress | vk::BufferUsageFlagBits::eTransferDst;
+    vk::BufferUsageFlags bufferUsageFlags = vk::BufferUsageFlagBits::eShaderDeviceAddress |
+                                            vk::BufferUsageFlagBits::eTransferDst |
+                                            vk::BufferUsageFlagBits::eTransferSrc;
+    bool readback = false;
     switch (bufferType)
     {
     case BufferType::eUniform:
@@ -642,10 +644,18 @@ BufferHandle Swift::CreateBuffer(
     case BufferType::eIndirect:
         bufferUsageFlags |= vk::BufferUsageFlagBits::eIndirectBuffer;
         break;
+    case BufferType::eReadback:
+        readback = true;
+        break;
     }
 
-    const auto buffer =
-        Init::CreateBuffer(gContext, gGraphicsQueue.index, size, bufferUsageFlags, debugName);
+    const auto buffer = Init::CreateBuffer(
+        gContext,
+        gGraphicsQueue.index,
+        size,
+        bufferUsageFlags,
+        readback,
+        debugName);
     gBuffers.emplace_back(buffer);
     const auto index = static_cast<u32>(gBuffers.size() - 1);
     return index;
@@ -704,6 +714,26 @@ void Swift::UpdateSmallBuffer(
     const auto& realBuffer = gBuffers.at(buffer);
     const auto& commandBuffer = Render::GetCommandBuffer(gCurrentFrameData);
     commandBuffer.updateBuffer(realBuffer, offset, size, data);
+}
+
+void Swift::CopyBuffer(
+    const BufferHandle srcBufferHandle,
+    const BufferHandle dstBufferHandle,
+    const u64 srcOffset,
+    const u64 dstOffset,
+    const u64 size)
+{
+    const auto region =
+        vk::BufferCopy2().setSize(size).setSrcOffset(srcOffset).setDstOffset(dstOffset);
+    const auto& realSrcBuffer = gBuffers.at(srcBufferHandle);
+    const auto& realDstBuffer = gBuffers.at(dstBufferHandle);
+    const auto& commandBuffer = Render::GetCommandBuffer(gCurrentFrameData);
+
+    commandBuffer.copyBuffer2(
+        vk::CopyBufferInfo2()
+            .setSrcBuffer(realSrcBuffer)
+            .setDstBuffer(realDstBuffer)
+            .setRegions(region));
 }
 
 u64 Swift::GetBufferAddress(const BufferHandle& buffer)

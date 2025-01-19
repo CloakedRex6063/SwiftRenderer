@@ -20,7 +20,8 @@ namespace Swift
         eUniform,
         eStorage,
         eIndex,
-        eIndirect
+        eIndirect,
+        eReadback
     };
 
     enum class CullMode
