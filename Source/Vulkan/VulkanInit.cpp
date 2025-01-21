@@ -182,6 +182,7 @@ namespace
 
             std::vector extensions{
                 VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+                VK_EXT_IMAGE_VIEW_MIN_LOD_EXTENSION_NAME,
                 VK_KHR_SHADER_RELAXED_EXTENDED_INSTRUCTION_EXTENSION_NAME};
             if (initInfo.bUsePipelines)
             {
@@ -247,7 +248,8 @@ namespace
     {
         std::vector extensionNames{
             VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-            VK_KHR_SHADER_RELAXED_EXTENDED_INSTRUCTION_EXTENSION_NAME};
+            VK_KHR_SHADER_RELAXED_EXTENDED_INSTRUCTION_EXTENSION_NAME,
+            VK_EXT_IMAGE_VIEW_MIN_LOD_EXTENSION_NAME};
         if (initInfo.bUsePipelines)
         {
             extensionNames.emplace_back(VK_EXT_EXTENDED_DYNAMIC_STATE_3_EXTENSION_NAME);
@@ -328,7 +330,7 @@ namespace
                                             .setShaderSampledImageArrayDynamicIndexing(true)
                                             .setShaderStorageBufferArrayDynamicIndexing(true)
                                             .setShaderUniformBufferArrayDynamicIndexing(true)
-                                            .setShaderFloat64(true);
+                                            .setSamplerAnisotropy(true);
 
         auto& deviceFeatures2 =
             initInfo.bUsePipelines
@@ -363,13 +365,16 @@ namespace
         const auto indices =
             Swift::Vulkan::Util::GetQueueFamilyIndices(context.gpu, context.surface);
         std::vector<vk::DeviceQueueCreateInfo> queueCreateInfos;
-        for (const auto family : indices)
+        auto queueProps = context.gpu.getQueueFamilyProperties();
+        std::array<std::vector<float>, 3> priorities;
+        for (const auto [index, family] : std::views::enumerate(indices))
         {
-            auto priority = 1.0f;
+            auto queueCount = queueProps[family].queueCount;
+            priorities[index].resize(queueCount, 1.0f);
             auto queueCreateInfo = vk::DeviceQueueCreateInfo()
-                                       .setQueueCount(1)
+                                       .setQueueCount(queueCount)
                                        .setQueueFamilyIndex(family)
-                                       .setQueuePriorities(priority);
+                                       .setQueuePriorities(priorities[index]);
             queueCreateInfos.emplace_back(queueCreateInfo);
         }
 
@@ -689,9 +694,10 @@ namespace Swift::Vulkan
     vk::Queue Init::GetQueue(
         const Context& context,
         const u32 queueFamilyIndex,
+        const u32 localIndex,
         const std::string_view debugName)
     {
-        const auto queue = context.device.getQueue(queueFamilyIndex, 0);
+        const auto queue = context.device.getQueue(queueFamilyIndex, localIndex);
         Util::NameObject(queue, debugName, context);
         return queue;
     }
@@ -708,6 +714,7 @@ namespace Swift::Vulkan
         };
         VkImage image;
         VmaAllocation allocation;
+        [[maybe_unused]]
         const auto vkResult = vmaCreateImage(
             context.allocator,
             &imageCreateInfo,
@@ -730,7 +737,8 @@ namespace Swift::Vulkan
             .SetImage(image)
             .SetAllocation(allocation)
             .SetFormat(static_cast<vk::Format>(imageCreateInfo.format))
-            .SetView(imageView);
+            .SetView(imageView)
+            .SetExtent(imageCreateInfo.extent);
     }
 
     Image Init::CreateImage(
@@ -763,6 +771,7 @@ namespace Swift::Vulkan
             .usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE,
             .requiredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
         };
+        [[maybe_unused]]
         const auto result = vmaCreateImage(
             context.allocator,
             &cCreateInfo,
@@ -807,7 +816,8 @@ namespace Swift::Vulkan
             .SetImage(image)
             .SetAllocation(allocation)
             .SetFormat(createInfo.format)
-            .SetView(imageView);
+            .SetView(imageView)
+            .SetExtent(extent);
     }
 
     std::tuple<
@@ -815,8 +825,8 @@ namespace Swift::Vulkan
         Buffer>
     Init::CreateDDSImage(
         const Context& context,
-        const Queue transferQueue,
-        const Command transferCommand,
+        Queue transferQueue,
+        Command transferCommand,
         const std::filesystem::path& filePath,
         int minMipLevel,
         const bool loadAllMips,
@@ -849,9 +859,11 @@ namespace Swift::Vulkan
             imageViewCreateInfo.subresourceRange.levelCount = 1;
         }
 
-        auto image = CreateImage(context, imageCreateInfo, imageViewCreateInfo, debugName);
-        
-        
+        auto image = CreateImage(context, imageCreateInfo, imageViewCreateInfo, debugName)
+                         .SetMinLod(static_cast<float>(minMipLevel))
+                         .SetMaxLod(static_cast<float>(header.MipLevels()))
+                         .SetURI(filePath.string());
+
         const auto srcImageBarrier = Util::ImageBarrier(
             image.currentLayout,
             vk::ImageLayout::eTransferDstOptimal,
@@ -1290,22 +1302,25 @@ namespace Swift::Vulkan
         return commandPool;
     }
 
-    vk::Sampler Init::CreateSampler(const vk::Device device)
+    vk::Sampler Init::CreateSampler(const Context& context)
     {
-        constexpr auto samplerCreateInfo = vk::SamplerCreateInfo()
-                                               .setMagFilter(vk::Filter::eLinear)
-                                               .setMinFilter(vk::Filter::eLinear)
-                                               .setAddressModeU(vk::SamplerAddressMode::eRepeat)
-                                               .setAddressModeV(vk::SamplerAddressMode::eRepeat)
-                                               .setAddressModeW(vk::SamplerAddressMode::eRepeat)
-                                               .setBorderColor(vk::BorderColor::eIntOpaqueBlack)
-                                               .setUnnormalizedCoordinates(false)
-                                               .setCompareOp(vk::CompareOp::eAlways)
-                                               .setCompareEnable(false)
-                                               .setMipmapMode(vk::SamplerMipmapMode::eLinear)
-                                               .setMinLod(0)
-                                               .setMaxLod(13);
-        const auto [result, sampler] = device.createSampler(samplerCreateInfo);
+        const auto props = context.gpu.getProperties();
+        const auto samplerCreateInfo = vk::SamplerCreateInfo()
+                                           .setMagFilter(vk::Filter::eLinear)
+                                           .setMinFilter(vk::Filter::eLinear)
+                                           .setAddressModeU(vk::SamplerAddressMode::eRepeat)
+                                           .setAddressModeV(vk::SamplerAddressMode::eRepeat)
+                                           .setAddressModeW(vk::SamplerAddressMode::eRepeat)
+                                           .setBorderColor(vk::BorderColor::eIntOpaqueBlack)
+                                           .setUnnormalizedCoordinates(false)
+                                           .setCompareOp(vk::CompareOp::eAlways)
+                                           .setCompareEnable(false)
+                                           .setMipmapMode(vk::SamplerMipmapMode::eLinear)
+                                           .setMinLod(0)
+                                           .setMaxLod(13)
+                                           .setAnisotropyEnable(true)
+                                           .setMaxAnisotropy(props.limits.maxSamplerAnisotropy);
+        const auto [result, sampler] = context.device.createSampler(samplerCreateInfo);
         VK_ASSERT(result, "Failed to create sampler!");
         return sampler;
     }

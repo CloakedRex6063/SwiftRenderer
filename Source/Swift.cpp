@@ -34,6 +34,7 @@ namespace
     // TODO: sampler pool for all types of samplers
     vk::Sampler gLinearSampler;
 
+    std::vector<Vulkan::Thread> gThreadDatas;
     std::vector<Vulkan::Buffer> gTransferStagingBuffers;
     std::vector<Vulkan::Buffer> gBuffers;
     std::vector<Vulkan::Shader> gShaders;
@@ -71,9 +72,9 @@ namespace
         switch (GetImageType(imageHandle))
         {
         case ImageType::eReadWrite:
-            return gSamplerImages[index];
-        case ImageType::eReadOnly:
             return gWriteableImages[index];
+        case ImageType::eReadOnly:
+            return gSamplerImages[index];
         case ImageType::eTemporary:
             return gTemporaryImages[index];
         }
@@ -90,11 +91,11 @@ void Swift::Init(const InitInfo& initInfo)
     gContext = Init::CreateContext(initInfo);
 
     const auto indices = Util::GetQueueFamilyIndices(gContext.gpu, gContext.surface);
-    const auto graphicsQueue = Init::GetQueue(gContext, indices[0], "Graphics Queue");
+    const auto graphicsQueue = Init::GetQueue(gContext, indices[0], 0, "Graphics Queue");
     gGraphicsQueue.SetIndex(indices[0]).SetQueue(graphicsQueue);
-    const auto computeQueue = Init::GetQueue(gContext, indices[1], "Compute Queue");
+    const auto computeQueue = Init::GetQueue(gContext, indices[1], 0, "Compute Queue");
     gComputeQueue.SetIndex(indices[1]).SetQueue(computeQueue);
-    const auto transferQueue = Init::GetQueue(gContext, indices[2], "Transfer Queue");
+    const auto transferQueue = Init::GetQueue(gContext, indices[2], 0, "Transfer Queue");
     gTransferQueue.SetIndex(indices[2]).SetQueue(transferQueue);
 
     constexpr auto depthFormat = vk::Format::eD32Sfloat;
@@ -179,6 +180,10 @@ void Swift::Init(const InitInfo& initInfo)
     ImGui_ImplVulkan_Init(&vulkanInitInfo);
     ImGui_ImplVulkan_CreateFontsTexture();
 #endif
+
+#ifdef  SWIFT_IMGUI_GLFW
+    ImGui_ImplGlfw_InitForVulkan(initInfo.glfwWindow, true);
+#endif
 }
 
 void Swift::Shutdown()
@@ -195,7 +200,7 @@ void Swift::Shutdown()
     ImGui::DestroyContext();
 #endif
 
-    for (const auto& frameData : gFrameData)
+    for (auto& frameData : gFrameData)
     {
         frameData.Destroy(gContext);
     }
@@ -308,13 +313,14 @@ void Swift::EndRendering()
 {
     const auto& commandBuffer = Render::GetCommandBuffer(gCurrentFrameData);
     commandBuffer.endRendering();
-
-#ifdef SWIFT_IMGUI
+}
+void Swift::RenderImGUI()
+{
+    const auto& commandBuffer = Render::GetCommandBuffer(gCurrentFrameData);
     Render::BeginRendering(commandBuffer, gSwapchain, false);
     ImGui::Render();
     ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), commandBuffer);
     commandBuffer.endRendering();
-#endif
 }
 
 void Swift::ShowDebugStats()
@@ -354,17 +360,16 @@ void Swift::SetPolygonMode(PolygonMode polygonMode)
     Render::SetPolygonMode(gContext, commandBuffer, static_cast<vk::PolygonMode>(polygonMode));
 }
 
-ShaderHandle Swift::CreateGraphicsShaderHandle(
+ShaderHandle Swift::CreateGraphicsShader(
     const std::string_view vertexPath,
     const std::string_view fragmentPath,
-    const std::string_view debugName,
-    const u32 pushConstantSize)
+    const std::string_view debugName)
 {
     const auto shader = Init::CreateGraphicsShader(
         gContext,
         gDescriptor,
         gInitInfo.bUsePipelines,
-        pushConstantSize,
+        128,
         vertexPath,
         fragmentPath,
         debugName);
@@ -373,16 +378,15 @@ ShaderHandle Swift::CreateGraphicsShaderHandle(
     return index;
 }
 
-ShaderHandle Swift::CreateComputeShaderHandle(
+ShaderHandle Swift::CreateComputeShader(
     const std::string& computePath,
-    const u32 pushConstantSize,
     const std::string_view debugName)
 {
     const auto shader = Init::CreateComputeShader(
         gContext,
         gDescriptor,
         gInitInfo.bUsePipelines,
-        pushConstantSize,
+        128,
         computePath,
         debugName);
     gShaders.emplace_back(shader);
@@ -468,12 +472,19 @@ ImageHandle Swift::LoadImageFromFile(
     const std::filesystem::path& filePath,
     const int mipLevel,
     const bool loadAllMipMaps,
-    const std::string_view debugName)
+    const std::string_view debugName,
+    const bool tempImage,
+    const ThreadHandle thread)
 {
-    Swift::BeginTransfer();
-    const auto image =
-        Swift::LoadImageFromFileQueued(filePath, mipLevel, loadAllMipMaps, debugName);
-    Swift::EndTransfer();
+    Swift::BeginTransfer(thread);
+    const auto image = Swift::LoadImageFromFileQueued(
+        filePath,
+        mipLevel,
+        loadAllMipMaps,
+        debugName,
+        tempImage,
+        thread);
+    Swift::EndTransfer(thread);
     return image;
 }
 
@@ -481,16 +492,28 @@ ImageHandle Swift::LoadImageFromFileQueued(
     const std::filesystem::path& filePath,
     const int mipLevel,
     const bool loadAllMipMaps,
-    const std::string_view debugName)
+    const std::string_view debugName,
+    const bool tempImage,
+    const ThreadHandle thread)
 {
+    Thread loadThread;
+    if (thread != -1)
+    {
+        loadThread = gThreadDatas[thread];
+    }
+
+    const auto transferQueue = loadThread.command.commandBuffer ? loadThread.queue : gTransferQueue;
+    const auto transferCommand =
+        loadThread.command.commandBuffer ? loadThread.command : gTransferCommand;
+
     Image image;
     Buffer staging;
     if (filePath.extension() == ".dds")
     {
         std::tie(image, staging) = Init::CreateDDSImage(
             gContext,
-            gTransferQueue,
-            gTransferCommand,
+            transferQueue,
+            transferCommand,
             filePath,
             mipLevel,
             loadAllMipMaps,
@@ -498,8 +521,16 @@ ImageHandle Swift::LoadImageFromFileQueued(
     }
     gTransferStagingBuffers.emplace_back(staging);
 
+    u32 arrayElement;
+    if (tempImage)
+    {
+        gTemporaryImages.emplace_back(image);
+        arrayElement = static_cast<u32>(gTemporaryImages.size() - 1);
+        return PackImageType(arrayElement, ImageType::eTemporary);
+    }
+
     gSamplerImages.emplace_back(image);
-    const auto arrayElement = static_cast<u32>(gSamplerImages.size() - 1);
+    arrayElement = static_cast<u32>(gSamplerImages.size() - 1);
     Util::UpdateDescriptorSampler(
         gDescriptor.set,
         gSamplerImages.back().imageView,
@@ -513,7 +544,7 @@ ImageHandle Swift::LoadCubemapFromFile(
     const std::filesystem::path& filePath,
     const std::string_view debugName)
 {
-    Swift::BeginTransfer();
+    Swift::BeginTransfer(-1);
     Image image;
     Buffer staging;
     assert(filePath.extension() == ".dds");
@@ -528,7 +559,7 @@ ImageHandle Swift::LoadCubemapFromFile(
             true,
             debugName);
     }
-    Swift::EndTransfer();
+    Swift::EndTransfer(-1);
     staging.Destroy(gContext);
 
     gSamplerImages.emplace_back(image);
@@ -552,7 +583,7 @@ Swift::LoadIBLDataFromHDRI(
     const std::filesystem::path& filePath,
     const std::string_view debugName)
 {
-    const auto hdriHandle = Swift::LoadImageFromFile(filePath, 0, false, debugName);
+    const auto hdriHandle = Swift::LoadImageFromFile(filePath, 0, false, debugName, false);
 
     const auto [skybox, irradiance, specular, lut] = Init::EquiRectangularToCubemap(
         gContext,
@@ -609,15 +640,50 @@ Swift::LoadIBLDataFromHDRI(
     return {skyboxObject, irradianceHandle, specularHandle, lutHandle};
 }
 
+float Swift::GetMinLod(const ImageHandle image)
+{
+    return GetRealImage(image).minLod;
+}
+
+float Swift::GetMaxLod(const ImageHandle image)
+{
+    return GetRealImage(image).maxLod;
+}
+
 u32 Swift::GetImageArrayIndex(const ImageHandle imageHandle)
 {
     return GetImageIndex(imageHandle);
 }
 
+std::string_view Swift::GetURI(ImageHandle imageHandle)
+{
+    return GetRealImage(imageHandle).uri;
+}
+
+ImageHandle Swift::ReadOnlyImageFromIndex(const int imageIndex)
+{
+    return PackImageType(imageIndex, ImageType::eReadOnly);
+}
+
+void Swift::UpdateImage(
+    const ImageHandle baseImage,
+    const ImageHandle tempImage)
+{
+    auto& realBaseImage = GetRealImage(baseImage);
+    realBaseImage.Destroy(gContext);
+    const auto& realTempImage = GetRealImage(tempImage);
+    realBaseImage = realTempImage;
+    Util::UpdateDescriptorSampler(
+        gDescriptor.set,
+        realBaseImage.imageView,
+        gLinearSampler,
+        GetImageArrayIndex(baseImage),
+        gContext);
+}
+
 void Swift::DestroyImage(const ImageHandle imageHandle)
 {
     auto& realImage = GetRealImage(imageHandle);
-    gWriteableImages.erase(gWriteableImages.begin() + GetImageIndex(imageHandle));
     realImage.Destroy(gContext);
 }
 
@@ -935,20 +1001,67 @@ void Swift::PushConstant(
     commandBuffer.pushConstants(pipelineLayout, pushStageFlags, 0, size, value);
 }
 
-void Swift::BeginTransfer()
+void Swift::BeginTransfer(const ThreadHandle threadHandle)
 {
-    Util::BeginOneTimeCommand(gTransferCommand);
+    if (threadHandle != -1)
+    {
+        Util::BeginOneTimeCommand(gThreadDatas[threadHandle].command);
+    }
+    else
+    {
+        Util::BeginOneTimeCommand(gTransferCommand);
+    }
 }
 
-void Swift::EndTransfer()
+void Swift::EndTransfer(const ThreadHandle threadHandle)
 {
-    Util::EndCommand(gTransferCommand);
-    Util::SubmitQueueHost(gTransferQueue, gTransferCommand, gTransferFence);
-    Util::WaitFence(gContext, gTransferFence);
-    Util::ResetFence(gContext, gTransferFence);
+    Command transferCommand;
+    Queue transferQueue;
+    vk::Fence transferFence;
+    if (threadHandle != -1)
+    {
+        transferQueue = gThreadDatas[threadHandle].queue;
+        transferCommand = gThreadDatas[threadHandle].command;
+        transferFence = gThreadDatas[threadHandle].fence;
+    }
+    else
+    {
+        transferQueue = gTransferQueue;
+        transferCommand = gTransferCommand;
+        transferFence = gTransferFence;
+    }
+    Util::EndCommand(transferCommand);
+    Util::SubmitQueueHost(transferQueue, transferCommand, transferFence);
+    Util::WaitFence(gContext, transferFence);
+    Util::ResetFence(gContext, transferFence);
     for (const auto& buffer : gTransferStagingBuffers)
     {
         buffer.Destroy(gContext);
     }
     gTransferStagingBuffers.clear();
+}
+
+ThreadHandle Swift::CreateThreadContext()
+{
+    const u32 size = static_cast<u32>(gThreadDatas.size());
+    const auto queue = Init::GetQueue(gContext, gGraphicsQueue.index, 1, "Thread Queue");
+    const auto threadQueue = Queue().SetQueue(queue).SetIndex(gGraphicsQueue.index);
+
+    const auto commandPool =
+        Init::CreateCommandPool(gContext, gGraphicsQueue.index, "Thread Command Pool");
+    const auto commandBuffer =
+        Init::CreateCommandBuffer(gContext, commandPool, "Thread Command Buffer");
+    const auto command = Command().SetCommandBuffer(commandBuffer).SetCommandPool(commandPool);
+
+    const auto fence = Init::CreateFence(gContext, {}, "Thread Fence");
+
+    gThreadDatas.emplace_back(Thread().SetQueue(threadQueue).SetCommand(command).SetFence(fence));
+
+    return size;
+}
+
+void Swift::DestroyThreadContext(const ThreadHandle threadHandle)
+{
+    gThreadDatas[threadHandle].Destroy(gContext);
+    gThreadDatas.erase(gThreadDatas.begin() + threadHandle);
 }

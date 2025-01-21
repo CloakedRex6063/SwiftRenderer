@@ -293,7 +293,7 @@ namespace Swift::Vulkan
             imageSize,
             vk::BufferUsageFlagBits::eTransferSrc,
             false,
-            "staging");
+            "Staging");
 
         std::ifstream file((filePath.data()), std::ios::binary);
         file.seekg(start, std::ios::beg);

@@ -11,6 +11,7 @@ namespace Swift
 
     void BeginRendering();
     void EndRendering();
+    void RenderImGUI();
 
     void ShowDebugStats();
 
@@ -35,15 +36,13 @@ namespace Swift
         u32 drawCount,
         u32 stride);
 
-    ShaderHandle CreateGraphicsShaderHandle(
+    ShaderHandle CreateGraphicsShader(
         std::string_view vertexPath,
         std::string_view fragmentPath,
-        std::string_view debugName,
-        u32 pushConstantSize = 0);
+        std::string_view debugName);
 
-    ShaderHandle CreateComputeShaderHandle(
+    ShaderHandle CreateComputeShader(
         const std::string& computePath,
-        u32 pushConstantSize,
         std::string_view debugName);
 
     void BindShader(const ShaderHandle& shaderObject);
@@ -51,6 +50,12 @@ namespace Swift
     void PushConstant(
         const void* value,
         u32 size);
+    
+    template<typename T>
+    void PushConstant(T value)
+    {
+        PushConstant(&value, sizeof(T));
+    }
 
     void DispatchCompute(
         u32 x,
@@ -60,17 +65,21 @@ namespace Swift
     ImageHandle CreateWriteableImage(
         glm::uvec2 size,
         std::string_view debugName);
+    void DestroyImage(ImageHandle imageHandle);
     ImageHandle LoadImageFromFile(
         const std::filesystem::path& filePath,
         int mipLevel,
         bool loadAllMipMaps,
-        std::string_view debugName);
-    void DestroyImage(ImageHandle imageHandle);
+        std::string_view debugName,
+        bool tempImage = false,
+        ThreadHandle thread = -1);
     ImageHandle LoadImageFromFileQueued(
         const std::filesystem::path& filePath,
         int mipLevel,
         bool loadAllMipMaps,
-        std::string_view debugName);
+        std::string_view debugName,
+        bool tempImage = false,
+        ThreadHandle thread = -1);
     ImageHandle LoadCubemapFromFile(
         const std::filesystem::path& filePath,
         std::string_view debugName);
@@ -83,7 +92,12 @@ namespace Swift
         const std::filesystem::path& filePath,
         std::string_view debugName);
 
+    float GetMinLod(ImageHandle image);
+    float GetMaxLod(ImageHandle image);
     u32 GetImageArrayIndex(ImageHandle imageHandle);
+    std::string_view GetURI(ImageHandle imageHandle);
+    ImageHandle ReadOnlyImageFromIndex(int imageIndex);
+    void UpdateImage(ImageHandle baseImage, ImageHandle tempImage);
 
     BufferHandle CreateBuffer(
         BufferType bufferType,
@@ -138,6 +152,9 @@ namespace Swift
         ImageHandle srcImageHandle,
         glm::uvec2 srcExtent);
 
-    void BeginTransfer();
-    void EndTransfer();
+    void BeginTransfer(ThreadHandle threadHandle = -1);
+    void EndTransfer(ThreadHandle threadHandle = -1);
+
+    ThreadHandle CreateThreadContext();
+    void DestroyThreadContext(ThreadHandle threadHandle);
 } // namespace Swift

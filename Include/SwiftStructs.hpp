@@ -1,6 +1,7 @@
 #pragma once
 #include "SwiftEnums.hpp"
 
+struct GLFWwindow;
 namespace Swift
 {
     struct InitInfo
@@ -16,6 +17,10 @@ namespace Swift
         HWND hwnd{};
         // Use for wider support of GPUs and possibly better performance. Optional
         bool bUsePipelines{};
+#ifdef  SWIFT_IMGUI_GLFW
+        // Window used to imgui initialisation
+        GLFWwindow* glfwWindow{};
+#endif
 
         InitInfo& SetAppName(const std::string_view appName)
         {
@@ -42,6 +47,11 @@ namespace Swift
             this->bUsePipelines = usePipelines;
             return *this;
         }
+        InitInfo& SetGlfwWindow(GLFWwindow* window)
+        {
+            this->glfwWindow = window;
+            return *this;
+        }
     };
 
     struct DynamicInfo
@@ -58,6 +68,7 @@ namespace Swift
     using ShaderHandle = u32;
     using BufferHandle = u32;
     using ImageHandle = u32;
+    using ThreadHandle = u32;
 
     struct BoundingSphere
     {

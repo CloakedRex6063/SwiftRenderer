@@ -80,6 +80,9 @@ namespace Swift::Vulkan
         VmaAllocation imageAllocation{};
         vk::ImageLayout currentLayout = vk::ImageLayout::eUndefined;
         vk::Extent3D extent{};
+        int minLod = 0.0f;
+        int maxLod = 0.0f;
+        std::string uri;
 
         operator vk::Image() const { return image; }
 
@@ -113,6 +116,21 @@ namespace Swift::Vulkan
             this->extent = vk::Extent3D(extent, 1);
             return *this;
         }
+        Image& SetMinLod(const float minLod)
+        {
+            this->minLod = minLod;
+            return *this;
+        }
+        Image& SetMaxLod(const float maxLod)
+        {
+            this->maxLod = maxLod;
+            return *this;
+        }
+        Image& SetURI(const std::string& uri)
+        {
+            this->uri = uri;
+            return *this;
+        }
 
         void Destroy(const Context& context)
         {
@@ -127,7 +145,11 @@ namespace Swift::Vulkan
                 context.device.destroyImage(image);
                 image = nullptr;
             }
-            context.device.destroyImageView(imageView);
+            if (imageView)
+            {
+                context.device.destroyImageView(imageView);
+                imageView = nullptr;
+            }
         }
         void DestroyView(const Context& context) const
         {
@@ -223,9 +245,28 @@ namespace Swift::Vulkan
         vk::CommandPool commandPool;
         vk::CommandBuffer commandBuffer;
 
+        Command& SetCommandPool(const vk::CommandPool& commandPool)
+        {
+            this->commandPool = commandPool;
+            return *this;
+        }
+        Command& SetCommandBuffer(const vk::CommandBuffer& commandBuffer)
+        {
+            this->commandBuffer = commandBuffer;
+            return *this;
+        }
+
         operator vk::CommandBuffer() const { return commandBuffer; }
 
-        void Destroy(const Context& context) const { context.device.destroy(commandPool); }
+        void Destroy(const Context& context)
+        {
+            if (commandPool)
+            {
+                context.device.destroy(commandPool);
+                commandPool = nullptr;
+                commandBuffer = nullptr;
+            }
+        }
     };
 
     struct FrameData
@@ -235,7 +276,7 @@ namespace Swift::Vulkan
         vk::Fence renderFence;
         Command renderCommand;
 
-        void Destroy(const Context& context) const
+        void Destroy(const Context& context)
         {
             context.device.destroy(renderFence);
             context.device.destroy(renderSemaphore);
@@ -310,6 +351,34 @@ namespace Swift::Vulkan
             }
             context.device.destroy(pipeline, nullptr, context.dynamicLoader);
             context.device.destroy(pipelineLayout);
+        }
+    };
+
+    struct Thread
+    {
+        Queue queue;
+        Command command;
+        vk::Fence fence;
+
+        Thread& SetQueue(const Queue queue)
+        {
+            this->queue = queue;
+            return *this;
+        }
+        Thread& SetCommand(const Command& command)
+        {
+            this->command = command;
+            return *this;
+        }
+        Thread& SetFence(const vk::Fence& fence)
+        {
+            this->fence = fence;
+            return *this;
+        }
+        void Destroy(const Context& context)
+        {
+            command.Destroy(context);
+            context.device.destroy(fence);
         }
     };
 } // namespace Swift::Vulkan

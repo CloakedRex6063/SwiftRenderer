@@ -6,7 +6,7 @@ namespace Swift
     struct BoundingSphere;
 }
 
-namespace Swift::Util
+namespace Swift
 {
     namespace Visibility
     {

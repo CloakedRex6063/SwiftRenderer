@@ -14,6 +14,7 @@ namespace Swift::Vulkan::Init
     vk::Queue GetQueue(
         const Context& context,
         u32 queueFamilyIndex,
+        u32 localIndex,
         std::string_view debugName);
 
     Image CreateImage(
@@ -61,7 +62,7 @@ namespace Swift::Vulkan::Init
         u32 queueIndex,
         std::string_view debugName);
 
-    vk::Sampler CreateSampler(vk::Device device);
+    vk::Sampler CreateSampler(const Context& context);
 
     vk::DescriptorSetLayout CreateDescriptorSetLayout(vk::Device device);
     vk::DescriptorPool CreateDescriptorPool(

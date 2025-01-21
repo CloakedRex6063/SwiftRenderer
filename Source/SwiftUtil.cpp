@@ -1,4 +1,4 @@
-#include "SwiftUtil.h"
+#include "SwiftUtil.hpp"
 #include "SwiftStructs.hpp"
 #include "glm/gtx/norm.hpp"
 #include "lz4.h"
@@ -65,7 +65,7 @@ namespace
     auto endTime = std::chrono::high_resolution_clock::now();
 } // namespace
 
-namespace Swift::Util
+namespace Swift
 {
     BoundingSphere
     Visibility::CreateBoundingSphereFromVertices(const std::span<glm::vec3> positions)
