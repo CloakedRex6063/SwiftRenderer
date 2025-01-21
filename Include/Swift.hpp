@@ -50,8 +50,8 @@ namespace Swift
     void PushConstant(
         const void* value,
         u32 size);
-    
-    template<typename T>
+
+    template <typename T>
     void PushConstant(T value)
     {
         PushConstant(&value, sizeof(T));
@@ -97,7 +97,10 @@ namespace Swift
     u32 GetImageArrayIndex(ImageHandle imageHandle);
     std::string_view GetURI(ImageHandle imageHandle);
     ImageHandle ReadOnlyImageFromIndex(int imageIndex);
-    void UpdateImage(ImageHandle baseImage, ImageHandle tempImage);
+    void UpdateImage(
+        ImageHandle baseImage,
+        ImageHandle tempImage);
+    void ClearTempImages();
 
     BufferHandle CreateBuffer(
         BufferType bufferType,
@@ -115,6 +118,11 @@ namespace Swift
     void UploadToMapped(
         void* mapped,
         const void* data,
+        u64 offset,
+        u64 size);
+    void DownloadBuffer(
+        const BufferHandle& buffer,
+        void* data,
         u64 offset,
         u64 size);
     void UpdateSmallBuffer(

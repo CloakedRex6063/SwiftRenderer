@@ -681,6 +681,11 @@ void Swift::UpdateImage(
         gContext);
 }
 
+void Swift::ClearTempImages()
+{
+    gTemporaryImages.clear();
+}
+
 void Swift::DestroyImage(const ImageHandle imageHandle)
 {
     auto& realImage = GetRealImage(imageHandle);
@@ -769,6 +774,16 @@ void Swift::UploadToMapped(
     const u64 size)
 {
     Util::UploadToMapped(data, mapped, offset, size);
+}
+
+void Swift::DownloadBuffer(
+    const BufferHandle& buffer,
+    void* data,
+    const u64 offset,
+    const u64 size)
+{
+    const auto& realBuffer = gBuffers.at(buffer);
+    vmaCopyAllocationToMemory(gContext.allocator, realBuffer.allocation, offset, data, size);
 }
 
 void Swift::UpdateSmallBuffer(

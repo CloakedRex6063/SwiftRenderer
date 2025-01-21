@@ -861,7 +861,7 @@ namespace Swift::Vulkan
 
         auto image = CreateImage(context, imageCreateInfo, imageViewCreateInfo, debugName)
                          .SetMinLod(static_cast<float>(minMipLevel))
-                         .SetMaxLod(static_cast<float>(header.MipLevels()))
+                         .SetMaxLod(static_cast<float>(header.MipLevels() - 1))
                          .SetURI(filePath.string());
 
         const auto srcImageBarrier = Util::ImageBarrier(

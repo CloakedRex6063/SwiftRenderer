@@ -87,4 +87,4 @@ namespace Swift
         }
         return "";
     }
-} // namespace Swift::Util
+} // namespace Swift
