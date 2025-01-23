@@ -16,8 +16,8 @@ namespace Swift
             Frustum& frustum,
             glm::mat4& viewMatrix,
             glm::vec3 cameraPos,
-            float nearPlane,
-            float farPlane,
+            float nearClip,
+            float farClip,
             float fov,
             float aspect);
         bool IsInFrustum(

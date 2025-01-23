@@ -83,7 +83,7 @@ namespace Swift
             maxAABB.z = std::max(maxAABB.z, position.z);
         }
 
-        return BoundingSphere((maxAABB + minAABB) * 0.5f, glm::length(minAABB - maxAABB));
+        return BoundingSphere((maxAABB + minAABB) * 0.5f, glm::length(minAABB - maxAABB) * 0.5f);
     }
 
     BoundingAABB Visibility::CreateBoundingAABBFromVertices(const std::span<glm::vec3> positions)
@@ -107,8 +107,8 @@ namespace Swift
         Frustum& frustum,
         glm::mat4& viewMatrix,
         const glm::vec3 cameraPos,
-        const float nearPlane,
-        const float farPlane,
+        const float nearClip,
+        const float farClip,
         const float fov,
         const float aspect)
     {
@@ -118,11 +118,11 @@ namespace Swift
             glm::normalize(glm::vec3(viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0]));
         const auto up =
             glm::normalize(glm::vec3(viewMatrix[0][1], viewMatrix[1][1], viewMatrix[2][1]));
-        const float halfVSide = farPlane * tanf(fov * .5f);
+        const float halfVSide = farClip * tanf(fov * .5f);
         const float halfHSide = halfVSide * aspect;
-        const glm::vec3 frontMultFar = farPlane * forward;
+        const glm::vec3 frontMultFar = farClip * forward;
 
-        frustum.nearFace = CreatePlane(cameraPos + nearPlane * forward, forward);
+        frustum.nearFace = CreatePlane(cameraPos + nearClip * forward, forward);
         frustum.farFace = CreatePlane(cameraPos + frontMultFar, -forward);
         frustum.rightFace =
             CreatePlane(cameraPos, glm::cross(frontMultFar - right * halfHSide, up));
@@ -143,7 +143,7 @@ namespace Swift
 
         const BoundingSphere boundingSphere{
             glm::vec3(globalCenter),
-            sphere.radius * maxScale * 0.5f};
+            sphere.radius * maxScale};
 
         return IsInsidePlane(frustum.leftFace, boundingSphere) &&
                IsInsidePlane(frustum.rightFace, boundingSphere) &&
