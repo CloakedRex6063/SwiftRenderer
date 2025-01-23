@@ -9,7 +9,7 @@ namespace Swift::Vulkan
         vk::PhysicalDevice gpu;
         vk::Device device;
         VmaAllocator allocator{};
-        vk::DispatchLoaderDynamic dynamicLoader;
+        vk::detail::DispatchLoaderDynamic dynamicLoader;
 
         operator vk::Device() const { return device; }
 
@@ -38,7 +38,7 @@ namespace Swift::Vulkan
             this->allocator = vmaAllocator;
             return *this;
         }
-        Context& SetDynamicLoader(const vk::DispatchLoaderDynamic& dynamicLoader)
+        Context& SetDynamicLoader(const vk::detail::DispatchLoaderDynamic& dynamicLoader)
         {
             this->dynamicLoader = dynamicLoader;
             return *this;

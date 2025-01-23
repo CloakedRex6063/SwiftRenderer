@@ -403,7 +403,7 @@ namespace
         return allocator;
     }
 
-    vk::DispatchLoaderDynamic CreateDynamicLoader(const Swift::Vulkan::Context& context)
+    vk::detail::DispatchLoaderDynamic CreateDynamicLoader(const Swift::Vulkan::Context& context)
     {
         return {context.instance, vkGetInstanceProcAddr, context.device, vkGetDeviceProcAddr};
     }
