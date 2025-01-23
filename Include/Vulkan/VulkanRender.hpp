@@ -321,8 +321,8 @@ namespace Swift::Vulkan::Render
         if (bUsePipeline)
         {
             const auto viewport = vk::Viewport()
-                                      .setWidth(extent.width)
-                                      .setHeight(extent.height)
+                                      .setWidth(float(extent.width))
+                                      .setHeight(float(extent.height))
                                       .setMinDepth(0.f)
                                       .setMaxDepth(1.f);
             commandBuffer.setViewport(0, viewport);

@@ -640,12 +640,12 @@ Swift::LoadIBLDataFromHDRI(
     return {skyboxObject, irradianceHandle, specularHandle, lutHandle};
 }
 
-float Swift::GetMinLod(const ImageHandle image)
+int Swift::GetMinLod(const ImageHandle image)
 {
     return GetRealImage(image).minLod;
 }
 
-float Swift::GetMaxLod(const ImageHandle image)
+int Swift::GetMaxLod(const ImageHandle image)
 {
     return GetRealImage(image).maxLod;
 }
@@ -735,13 +735,6 @@ BufferHandle Swift::CreateBuffer(
 void Swift::DestroyBuffer(const BufferHandle bufferHandle)
 {
     const auto& realBuffer = gBuffers.at(bufferHandle);
-    const auto it = std::ranges::find_if(
-        gBuffers,
-        [&](const Buffer& buffer)
-        {
-            return buffer.buffer == realBuffer.buffer;
-        });
-    gBuffers.erase(it);
     realBuffer.Destroy(gContext);
 }
 

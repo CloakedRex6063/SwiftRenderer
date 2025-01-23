@@ -92,8 +92,8 @@ namespace Swift
         const std::filesystem::path& filePath,
         std::string_view debugName);
 
-    float GetMinLod(ImageHandle image);
-    float GetMaxLod(ImageHandle image);
+    int GetMinLod(ImageHandle image);
+    int GetMaxLod(ImageHandle image);
     u32 GetImageArrayIndex(ImageHandle imageHandle);
     std::string_view GetURI(ImageHandle imageHandle);
     ImageHandle ReadOnlyImageFromIndex(int imageIndex);
