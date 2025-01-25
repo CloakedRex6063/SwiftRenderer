@@ -828,7 +828,7 @@ namespace Swift::Vulkan
         Queue transferQueue,
         Command transferCommand,
         const std::filesystem::path& filePath,
-        int minMipLevel,
+        int maxMipLevel,
         const bool loadAllMips,
         const std::string_view debugName)
     {
@@ -838,29 +838,30 @@ namespace Swift::Vulkan
             vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst);
         auto imageViewCreateInfo = header.GetVulkanImageViewCreateInfo();
 
-        if (minMipLevel == -1)
+        if (maxMipLevel == -1)
         {
-            minMipLevel = static_cast<int>(header.MipLevels()) - 1;
+            maxMipLevel = static_cast<int>(header.MipLevels()) - 1;
         }
-        minMipLevel = std::clamp(minMipLevel, 0, static_cast<int>(header.MipLevels()) - 1);
+        maxMipLevel = std::clamp(maxMipLevel, 0, static_cast<int>(header.MipLevels()) - 1);
 
-        const auto mipCount = loadAllMips ? header.MipLevels() - minMipLevel : 1;
+        const auto minLevel = std::max(0, static_cast<int>(std::log2(header.Width() / 4)) + 1);
+        const auto mipCount = loadAllMips ? minLevel - maxMipLevel : 1;
         if (loadAllMips)
         {
             imageCreateInfo.mipLevels = mipCount;
-            imageCreateInfo.extent = Util::GetMipExtent(imageCreateInfo.extent, minMipLevel);
+            imageCreateInfo.extent = Util::GetMipExtent(imageCreateInfo.extent, maxMipLevel);
             imageViewCreateInfo.subresourceRange.levelCount = mipCount;
         }
 
         if (!loadAllMips)
         {
             imageCreateInfo.mipLevels = 1;
-            imageCreateInfo.extent = Util::GetMipExtent(imageCreateInfo.extent, minMipLevel);
+            imageCreateInfo.extent = Util::GetMipExtent(imageCreateInfo.extent, maxMipLevel);
             imageViewCreateInfo.subresourceRange.levelCount = 1;
         }
 
         auto image = CreateImage(context, imageCreateInfo, imageViewCreateInfo, debugName)
-                         .SetMinLod(static_cast<float>(minMipLevel))
+                         .SetMinLod(static_cast<float>(maxMipLevel))
                          .SetMaxLod(static_cast<float>(header.MipLevels() - 1))
                          .SetURI(filePath.string());
 
@@ -879,7 +880,7 @@ namespace Swift::Vulkan
             transferQueue.index,
             header,
             filePath.string(),
-            minMipLevel,
+            maxMipLevel,
             loadAllMips,
             image);
 

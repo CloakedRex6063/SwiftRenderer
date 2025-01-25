@@ -1,0 +1,69 @@
+#version 460
+#extension GL_GOOGLE_include_directive : require
+#include "common.glsl"
+
+layout(local_size_x = 256) in;
+
+struct Mesh
+{
+    int vertexOffset;
+    uint firstIndex;
+    uint indexCount;
+    int materialIndex;
+    int transformIndex;
+    int padding;
+};
+
+layout(buffer_reference, std430) readonly buffer MeshBuffer
+{
+    Mesh meshes[];
+};
+
+layout(buffer_reference, std430) writeonly buffer LODBuffer
+{
+    float lods[];
+};
+
+layout(buffer_reference, std430) readonly buffer VisibilityBuffer
+{
+    uint indices[];
+};
+
+layout(push_constant) uniform PushConstant
+{
+    TransformBuffer transformBuffer;
+    MeshBuffer meshBuffer;
+    LODBuffer lodBuffer;
+    VisibilityBuffer visBuffer;
+    vec3 cameraPos;
+    uint meshCount;
+    float minDistance;
+    float maxDistance;
+};
+
+float MapRange(float value, float inMin, float inMax, float outMin, float outMax) 
+{
+    return clamp(outMin + (outMax - outMin) * (value - inMin) / (inMax - inMin), outMin, outMax);
+}
+
+void main()
+{
+    uint id = gl_GlobalInvocationID.x;
+    if (id >= meshCount)
+    {
+        return;
+    }
+
+    Mesh mesh = meshBuffer.meshes[id];
+    if(visBuffer.indices[id] == 0)
+    {
+        lodBuffer.lods[id] = 16;
+        return;
+    }
+
+    mat4 transform = transformBuffer.transforms[mesh.transformIndex];
+    vec3 position = vec3(transform[3]);
+
+    float distanceToCamera = length(position - cameraPos);
+    lodBuffer.lods[id] = MapRange(distanceToCamera, minDistance, maxDistance, 0.0, 16.0);
+}

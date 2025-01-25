@@ -1,0 +1,55 @@
+#version 460
+#extension GL_GOOGLE_include_directive : require
+#include "common.glsl"
+
+layout(local_size_x = 256) in;
+
+struct VkDrawIndexedIndirectCommand
+{
+    uint indexCount;
+    uint instanceCount;
+    uint firstIndex;
+    int  vertexOffset;
+    uint firstInstance;
+};
+
+struct Mesh
+{
+    int vertexOffset;
+    uint firstIndex;
+    uint indexCount;
+    int materialIndex;
+    int transformIndex;
+    int padding;
+};
+
+layout(buffer_reference, std430) writeonly buffer IndirectBuffer
+{
+    VkDrawIndexedIndirectCommand commands[];
+};
+
+layout(buffer_reference, std430) readonly buffer MeshBuffer
+{
+    Mesh meshes[];
+};
+
+layout(push_constant) uniform PushConstant
+{
+    IndirectBuffer indirectBuffer;
+    MeshBuffer meshBuffer;
+    uint meshCount;
+};
+        
+void main() 
+{
+    uint id = gl_GlobalInvocationID.x;
+    if (id >= meshCount)
+    {
+        return;
+    }
+    indirectBuffer.commands[id].firstInstance = 0;
+    indirectBuffer.commands[id].instanceCount = 1;
+    indirectBuffer.commands[id].firstIndex = meshBuffer.meshes[id].firstIndex;
+    indirectBuffer.commands[id].indexCount = meshBuffer.meshes[id].indexCount;
+    indirectBuffer.commands[id].vertexOffset = meshBuffer.meshes[id].vertexOffset;
+}

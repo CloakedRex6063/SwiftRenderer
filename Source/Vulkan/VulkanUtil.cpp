@@ -302,7 +302,13 @@ namespace Swift::Vulkan
         file.read(static_cast<char*>(mapped), imageSize);
         UnmapBuffer(context, buffer);
 
-        CopyBufferToImage(commandBuffer, buffer, ddsImage, mipLevel, loadAllMips, image);
+        CopyBufferToImage(
+            commandBuffer,
+            buffer,
+            ddsImage,
+            mipLevel,
+            loadAllMips,
+            image);
         return buffer;
     }
 
@@ -310,7 +316,7 @@ namespace Swift::Vulkan
         const vk::CommandBuffer commandBuffer,
         const vk::Buffer buffer,
         const dds::Header& ddsImage,
-        const u32 minMipLevel,
+        const u32 maxMipLevel,
         const bool loadAllMips,
         const vk::Image image)
     {
@@ -321,17 +327,19 @@ namespace Swift::Vulkan
             u32 offset = 0;
             for (u32 layer = 0; layer < ddsImage.ArraySize(); layer++)
             {
-                for (int i = minMipLevel; i < ddsImage.MipLevels(); i++)
+                for (int i = maxMipLevel; i < ddsImage.MipLevels(); i++)
                 {
                     vk::Extent3D mipExtent = {
                         std::max(1u, extent.width >> i),
                         std::max(1u, extent.height >> i),
                         std::max(1u, extent.depth >> i)};
+                    if (mipExtent.width < 4)
+                        break;
                     const auto bufferImageCopy = vk::BufferImageCopy2()
                                                      .setImageExtent(mipExtent)
                                                      .setImageSubresource(GetImageSubresourceLayers(
                                                          vk::ImageAspectFlagBits::eColor,
-                                                         i - minMipLevel,
+                                                         i - maxMipLevel,
                                                          1,
                                                          layer))
                                                      .setBufferOffset(offset);
@@ -344,7 +352,7 @@ namespace Swift::Vulkan
         {
             for (int i = 0; i < ddsImage.ArraySize(); i++)
             {
-                const auto extent = Util::GetMipExtent(ddsImage.GetVulkanExtent(), minMipLevel);
+                const auto extent = Util::GetMipExtent(ddsImage.GetVulkanExtent(), maxMipLevel);
                 const auto bufferImageCopy =
                     vk::BufferImageCopy2().setImageExtent(extent).setImageSubresource(
                         GetImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, 0, 1, i));

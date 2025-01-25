@@ -18,16 +18,12 @@ elseif (UNIX AND NOT APPLE)
     target_compile_definitions(SwiftRender PUBLIC SWIFT_LINUX)
 endif ()
 
-add_subdirectory(External)
-add_subdirectory(Shaders)
-add_dependencies(SwiftRender SwiftCompileShaders)
-
-option(SwiftWithExample "Build the example project" OFF)
-option(SwiftImGui "Support Imgui with swift" OFF)
-option(SwiftImGuiGLFW "Support GLFW backend for imgui" OFF)
+option(SwiftWithExample "Build the example project" ON)
+option(SwiftImGui "Support Imgui with swift" ON)
+option(SwiftImGuiGLFW "Support GLFW backend for imgui" ON)
 
 if (SwiftWithExample)
-    add_subdirectory(Example)
+    add_subdirectory(Examples)
 endif ()
 
 if (SwiftImGui)
@@ -37,4 +33,8 @@ endif ()
 if (SwiftImGuiGLFW)
     target_compile_definitions(SwiftRender PUBLIC SWIFT_IMGUI_GLFW)
 endif ()
+
+add_subdirectory(External)
+add_subdirectory(Shaders)
+add_dependencies(SwiftRender SwiftCompileShaders)
 

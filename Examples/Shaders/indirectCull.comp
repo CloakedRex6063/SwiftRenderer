@@ -1,0 +1,129 @@
+#version 460
+#extension GL_GOOGLE_include_directive : require
+#include "common.glsl"
+
+precision highp float;
+
+layout(local_size_x = 256) in;
+
+struct VkDrawIndexedIndirectCommand
+{
+    uint indexCount;
+    uint instanceCount;
+    uint firstIndex;
+    int  vertexOffset;
+    uint firstInstance;
+};
+
+struct Mesh
+{
+    int vertexOffset;
+    uint firstIndex;
+    uint indexCount;
+    int materialIndex;
+    int transformIndex;
+    int padding;
+};
+
+struct Plane
+{
+    vec3 normal;
+    float distance;
+};
+
+struct Frustum
+{
+    Plane topFace;
+    Plane bottomFace;
+
+    Plane leftFace;
+    Plane rightFace;
+
+    Plane nearFace;
+    Plane farFace;
+};
+
+struct BoundingSphere
+{
+    vec3 center;
+    float radius;
+};
+
+layout(buffer_reference, std430) writeonly buffer IndirectBuffer
+{
+    VkDrawIndexedIndirectCommand commands[];
+};
+
+layout(buffer_reference, std430) readonly buffer MeshBuffer
+{
+    Mesh meshes[];
+};
+
+layout(buffer_reference, std430) readonly buffer BoundingBuffer
+{
+    BoundingSphere boundingSpheres[];
+};
+
+layout(buffer_reference, std430) readonly buffer FrustumBuffer
+{
+    Frustum frustum;
+};
+
+layout(buffer_reference, std430) writeonly buffer VisibilityBuffer
+{
+    uint indices[];
+};
+
+layout(push_constant) uniform PushConstant
+{
+    IndirectBuffer indirectBuffer;
+    MeshBuffer meshBuffer;
+    FrustumBuffer frustumBuffer;
+    BoundingBuffer boundingBuffer;
+    TransformBuffer transformBuffer;
+    VisibilityBuffer visBuffer;
+    uint meshCount;
+};
+
+vec3 GetScaleFromMatrix(mat4 matrix)
+{
+    return vec3(length(matrix[0].xyz), length(matrix[1].xyz), length(matrix[2].xyz));
+}
+
+bool IsInsidePlane(
+    Plane plane,
+    BoundingSphere sphere)
+{
+    return dot(plane.normal, sphere.center) - plane.distance >= -sphere.radius;
+}
+
+bool IsInFrustum(BoundingSphere sphere, mat4 worldTransform)
+{
+    vec4 globalCenter = worldTransform * vec4(sphere.center, 1.0f);
+    vec3 globalScale = GetScaleFromMatrix(worldTransform);
+    float maxScale = max(max(globalScale.x, globalScale.y), globalScale.z);
+    const BoundingSphere transformedSphere = BoundingSphere(vec3(globalCenter.xyz), sphere.radius * maxScale * 0.5f);
+    const Frustum frustum = frustumBuffer.frustum;
+
+    return IsInsidePlane(frustum.nearFace, transformedSphere);
+}
+
+void main()
+{
+    uint id = gl_GlobalInvocationID.x;
+    if (id >= meshCount)
+    {
+        return;
+    }
+
+    Mesh mesh = meshBuffer.meshes[id];
+    const BoundingSphere sphere = boundingBuffer.boundingSpheres[id];
+    const mat4 transform = transformBuffer.transforms[mesh.transformIndex];
+    const uint visible = IsInFrustum(sphere, transform) ? 1 : 0;
+    visBuffer.indices[id] = visible;
+    indirectBuffer.commands[id].firstInstance = 0;
+    indirectBuffer.commands[id].instanceCount = visible;
+    indirectBuffer.commands[id].firstIndex = mesh.firstIndex;
+    indirectBuffer.commands[id].indexCount = mesh.indexCount;
+    indirectBuffer.commands[id].vertexOffset = mesh.vertexOffset;
+}

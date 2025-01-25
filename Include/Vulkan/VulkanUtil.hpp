@@ -125,7 +125,7 @@ namespace Swift::Vulkan::Util
         vk::CommandBuffer commandBuffer,
         vk::Buffer buffer,
         const dds::Header& ddsImage,
-        u32 minMipLevel,
+        u32 maxMipLevel,
         bool loadAllMips,
         vk::Image image);
 
