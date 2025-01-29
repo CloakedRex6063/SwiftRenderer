@@ -14,6 +14,3 @@
 	path = External/DDS
 	url = https://github.com/CloakedRex6063/DDS-Utility
 	branch = master
-[submodule "External/LZ4"]
-	path = External/LZ4
-	url = https://github.com/lz4/lz4

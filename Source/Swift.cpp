@@ -181,7 +181,7 @@ void Swift::Init(const InitInfo& initInfo)
     ImGui_ImplVulkan_CreateFontsTexture();
 #endif
 
-#ifdef  SWIFT_IMGUI_GLFW
+#ifdef SWIFT_IMGUI_GLFW
     ImGui_ImplGlfw_InitForVulkan(initInfo.glfwWindow, true);
 #endif
 }
@@ -434,6 +434,26 @@ void Swift::DrawIndexedIndirect(
     const auto& commandBuffer = Render::GetCommandBuffer(gCurrentFrameData);
     const auto& realBuffer = gBuffers[buffer];
     commandBuffer.drawIndexedIndirect(realBuffer, offset, drawCount, stride);
+}
+
+void Swift::DrawIndexedIndirectCount(
+    const BufferHandle& buffer,
+    const u64 offset,
+    const BufferHandle& countBuffer,
+    const u64 countOffset,
+    const u32 maxDrawCount,
+    const u32 stride)
+{
+    const auto& commandBuffer = Render::GetCommandBuffer(gCurrentFrameData);
+    const auto& realBuffer = gBuffers[buffer];
+    const auto& realCountBuffer = gBuffers[countBuffer];
+    commandBuffer.drawIndexedIndirectCount(
+        realBuffer,
+        offset,
+        realCountBuffer,
+        countOffset,
+        maxDrawCount,
+        stride);
 }
 
 ImageHandle Swift::CreateWriteableImage(

@@ -152,60 +152,6 @@ namespace Swift
                IsInsidePlane(frustum.nearFace, boundingSphere) &&
                IsInsidePlane(frustum.farFace, boundingSphere);
     }
-
-    std::expected<
-        int,
-        Compression::Error>
-    Compression::CompressFile(const std::filesystem::path& filePath)
-    {
-        std::ifstream file(filePath, std::ios::binary);
-        if (!file.is_open())
-            return std::unexpected(Error::eFileNotFound);
-
-        file.seekg(0, std::ios::end);
-        const size_t fileSize = file.tellg();
-        file.seekg(0, std::ios::beg);
-
-        const auto maxCompressedSize = LZ4_compressBound(fileSize);
-        std::vector<char> compressedData(maxCompressedSize / sizeof(char));
-        std::vector<char> fileData(fileSize / sizeof(char));
-        file.read(fileData.data(), fileSize);
-        const auto compressedSize = LZ4_compress_default(
-            fileData.data(),
-            compressedData.data(),
-            fileSize,
-            maxCompressedSize);
-
-        if (compressedSize <= 0)
-            return std::unexpected(Error::eCompressionFailed);
-
-        std::ofstream compressedFile(filePath.string() + "Compressed", std::ios::binary);
-        compressedFile.write(compressedData.data(), compressedSize);
-        return compressedSize;
-    }
-
-    [[nodiscard]]
-    std::expected<
-        std::vector<int>,
-        Compression::Error>
-    Compression::BatchCompress(
-        const std::filesystem::path& folderPath,
-        const bool recursive)
-    {
-        if (!is_directory(folderPath))
-            return std::unexpected(Error::eNotAFolder);
-
-        const auto files = GetAllFilesInDirectory(folderPath, recursive);
-        std::vector<int> compressedSizes;
-        for (const auto& file : files)
-        {
-            const auto compressedSize = Compression::CompressFile(file);
-            if (!compressedSize.has_value())
-                return std::unexpected(compressedSize.error());
-            compressedSizes.push_back(compressedSize.value());
-        }
-        return compressedSizes;
-    }
     
     void Performance::BeginTimer()
     {

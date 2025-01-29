@@ -35,11 +35,18 @@ namespace Swift
         u64 offset,
         u32 drawCount,
         u32 stride);
+    void DrawIndexedIndirectCount(
+        const BufferHandle& buffer,
+        u64 offset,
+        const BufferHandle& countBuffer,
+        u64 countOffset,
+        u32 maxDrawCount,
+        u32 stride)
 
-    ShaderHandle CreateGraphicsShader(
-        std::string_view vertexPath,
-        std::string_view fragmentPath,
-        std::string_view debugName);
+        ShaderHandle CreateGraphicsShader(
+            std::string_view vertexPath,
+            std::string_view fragmentPath,
+            std::string_view debugName);
 
     ShaderHandle CreateComputeShader(
         const std::string& computePath,
