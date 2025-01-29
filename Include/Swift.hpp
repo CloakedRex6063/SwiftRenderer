@@ -95,14 +95,6 @@ namespace Swift
     ImageHandle LoadCubemapFromFile(
         const std::filesystem::path& filePath,
         std::string_view debugName);
-    std::tuple<
-        ImageHandle,
-        ImageHandle,
-        ImageHandle,
-        ImageHandle>
-    LoadIBLDataFromHDRI(
-        const std::filesystem::path& filePath,
-        std::string_view debugName);
 
     int GetMinLod(ImageHandle image);
     int GetMaxLod(ImageHandle image);

@@ -60,5 +60,6 @@ add_custom_command(
 
 add_dependencies(Utility CompressTextures)
 add_dependencies(Utility CompileShaders)
+add_dependencies(Utility UseDDS)
 add_dependencies(CompressTextures CopyResources)
-add_dependencies(CompressTextures UseDDS)
+add_dependencies(UseDDS CompressTextures)

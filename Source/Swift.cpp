@@ -593,72 +593,6 @@ ImageHandle Swift::LoadCubemapFromFile(
     return PackImageType(arrayElement, ImageType::eReadOnly);
 }
 
-std::tuple<
-    ImageHandle,
-    ImageHandle,
-    ImageHandle,
-    ImageHandle>
-Swift::LoadIBLDataFromHDRI(
-    const std::filesystem::path& filePath,
-    const std::string_view debugName)
-{
-    const auto hdriHandle = Swift::LoadImageFromFile(filePath, 0, false, debugName, false);
-
-    const auto [skybox, irradiance, specular, lut] = Init::EquiRectangularToCubemap(
-        gContext,
-        gDescriptor,
-        gSamplerImages,
-        gLinearSampler,
-        gGraphicsCommand,
-        gGraphicsFence,
-        gGraphicsQueue,
-        gInitInfo.bUsePipelines,
-        hdriHandle,
-        debugName);
-
-    auto arrayElement = static_cast<u32>(gSamplerImages.size() - 1);
-    Util::UpdateDescriptorSamplerCube(
-        gDescriptor.set,
-        gSamplerImages.back().imageView,
-        gLinearSampler,
-        arrayElement,
-        gContext);
-    auto skyboxObject = PackImageType(arrayElement, ImageType::eReadOnly);
-
-    gSamplerImages.emplace_back(irradiance);
-    arrayElement = static_cast<u32>(gSamplerImages.size() - 1);
-    Util::UpdateDescriptorSamplerCube(
-        gDescriptor.set,
-        gSamplerImages.back().imageView,
-        gLinearSampler,
-        arrayElement,
-        gContext);
-    auto irradianceHandle = PackImageType(arrayElement, ImageType::eReadOnly);
-
-    gSamplerImages.emplace_back(specular);
-    arrayElement = static_cast<u32>(gSamplerImages.size() - 1);
-    Util::UpdateDescriptorSamplerCube(
-        gDescriptor.set,
-        gSamplerImages.back().imageView,
-        gLinearSampler,
-        arrayElement,
-        gContext);
-    auto specularHandle = PackImageType(arrayElement, ImageType::eReadOnly);
-
-    gSamplerImages.emplace_back(lut);
-    arrayElement = static_cast<u32>(gSamplerImages.size() - 1);
-    Util::UpdateDescriptorSampler(
-        gDescriptor.set,
-        gSamplerImages.back().imageView,
-        gLinearSampler,
-        arrayElement,
-        gContext);
-
-    auto lutHandle = PackImageType(arrayElement, ImageType::eReadOnly);
-
-    return {skyboxObject, irradianceHandle, specularHandle, lutHandle};
-}
-
 int Swift::GetMinLod(const ImageHandle image)
 {
     return GetRealImage(image).minLod;
@@ -674,7 +608,7 @@ u32 Swift::GetImageArrayIndex(const ImageHandle imageHandle)
     return GetImageIndex(imageHandle);
 }
 
-std::string_view Swift::GetURI(ImageHandle imageHandle)
+std::string_view Swift::GetURI(const ImageHandle imageHandle)
 {
     return GetRealImage(imageHandle).uri;
 }

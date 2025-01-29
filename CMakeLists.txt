@@ -35,6 +35,4 @@ if (SwiftImGuiGLFW)
 endif ()
 
 add_subdirectory(External)
-add_subdirectory(Shaders)
-add_dependencies(SwiftRender SwiftCompileShaders)
 
