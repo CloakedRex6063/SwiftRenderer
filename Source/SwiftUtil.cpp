@@ -1,8 +1,6 @@
 #include "SwiftUtil.hpp"
 #include "SwiftStructs.hpp"
 #include "glm/gtx/norm.hpp"
-#include "lz4.h"
-#include "lz4file.h"
 
 namespace
 {

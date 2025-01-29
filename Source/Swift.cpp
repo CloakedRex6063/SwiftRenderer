@@ -338,7 +338,6 @@ void Swift::ShowDebugStats()
     ImGui::Text(
         "Available GPU Memory: %f GB",
         static_cast<float>(budgets[0].budget) / (1024.0f * 1024.0f * 1024.0f));
-    ImGui::Text("FPS: %f", ImGui::GetIO().Framerate);
     ImGui::End();
 #endif
 }

@@ -115,6 +115,15 @@ struct Material
     int padding3{};
 };
 
+struct SceneBuffers
+{
+    Swift::BufferHandle vertexBuffer = Swift::InvalidHandle;
+    Swift::BufferHandle indexBuffer = Swift::InvalidHandle;
+    Swift::BufferHandle materialBuffer = Swift::InvalidHandle;
+    Swift::BufferHandle transformBuffer = Swift::InvalidHandle;
+    Swift::BufferHandle boundingBuffer = Swift::InvalidHandle;
+};
+
 struct Scene
 {
     std::vector<Mesh> meshes{};
@@ -125,6 +134,7 @@ struct Scene
     std::vector<u32> indices{};
     std::vector<glm::mat4> transforms{};
     ModelPushConstant pushConstant{};
+    SceneBuffers sceneBuffers{};
 };
 
 struct CameraData

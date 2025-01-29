@@ -32,7 +32,7 @@ int main()
     Swift::UploadToBuffer(cameraBuffer, &cameraData, 0, sizeof(CameraData));
 
     Scene scene;
-    Parser::LoadMeshes(scene, "../Resources/Chess/ABeautifulGame.gltf");
+    Parser::LoadMeshes(scene, "../Resources/Helmet/DamagedHelmet.gltf");
     Scene cubeScene;
     const auto cubeIndex = Parser::LoadMeshes(cubeScene, "../Resources/Cube/Cube.gltf");
     const auto cubeVertexSize = cubeScene.vertices.size() * sizeof(Vertex);
@@ -364,7 +364,7 @@ int main()
         Swift::SetDepthCompareOp(Swift::DepthCompareOp::eLessOrEqual);
         Swift::PushConstant(skyboxPushConstant);
 
-        const auto cube = cubeScene.meshes[cubeIndex[0]];
+        const auto cube = cubeScene.meshes[cubeIndex.value()[0]];
         Swift::DrawIndexed(cube.indexCount, 1, cube.firstIndex, cube.vertexOffset, 0);
 
         Swift::EndRendering();
@@ -393,6 +393,7 @@ int main()
         ImGui::Text("Total Vertices: %d", totalVertices);
         ImGui::Text("Total Triangles: %d", totalTriangles);
         ImGui::Text("Total Meshes: %d", totalMeshes);
+        ImGui::Text("FPS: %f", 1.f / deltaTime);
 
         ImGui::End();
         Swift::RenderImGUI();

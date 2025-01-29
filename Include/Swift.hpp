@@ -6,6 +6,11 @@ namespace Swift
     void Init(const InitInfo& initInfo);
     void Shutdown();
 
+    inline bool IsValid(const Swift::BufferHandle handle)
+    {
+        return handle != InvalidHandle;
+    }
+    
     void BeginFrame(const DynamicInfo& dynamicInfo);
     void EndFrame(const DynamicInfo& dynamicInfo);
 
@@ -41,12 +46,12 @@ namespace Swift
         const BufferHandle& countBuffer,
         u64 countOffset,
         u32 maxDrawCount,
-        u32 stride)
+        u32 stride);
 
-        ShaderHandle CreateGraphicsShader(
-            std::string_view vertexPath,
-            std::string_view fragmentPath,
-            std::string_view debugName);
+    ShaderHandle CreateGraphicsShader(
+        std::string_view vertexPath,
+        std::string_view fragmentPath,
+        std::string_view debugName);
 
     ShaderHandle CreateComputeShader(
         const std::string& computePath,

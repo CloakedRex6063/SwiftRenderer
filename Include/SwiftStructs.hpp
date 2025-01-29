@@ -65,6 +65,7 @@ namespace Swift
         }
     };
 
+    inline u32 InvalidHandle = std::numeric_limits<u32>::max();
     using ShaderHandle = u32;
     using BufferHandle = u32;
     using ImageHandle = u32;
