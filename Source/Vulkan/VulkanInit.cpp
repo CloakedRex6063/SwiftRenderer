@@ -180,6 +180,11 @@ namespace
                 continue;
             }
 
+            if (!deviceFeatures.features.multiDrawIndirect)
+            {
+                continue;
+            }
+
             std::vector extensions{
                 VK_KHR_SWAPCHAIN_EXTENSION_NAME,
                 VK_EXT_IMAGE_VIEW_MIN_LOD_EXTENSION_NAME,
@@ -315,7 +320,8 @@ namespace
             .setDescriptorBindingStorageBufferUpdateAfterBind(true)
             .setDescriptorBindingStorageImageUpdateAfterBind(true)
             .setDescriptorBindingUniformBufferUpdateAfterBind(true)
-            .setRuntimeDescriptorArray(true);
+            .setRuntimeDescriptorArray(true)
+            .setDrawIndirectCount(true);
 
         auto& features13 =
             initInfo.bUsePipelines
