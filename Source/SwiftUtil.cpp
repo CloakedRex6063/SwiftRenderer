@@ -103,7 +103,7 @@ namespace Swift
 
     void Visibility::UpdateFrustum(
         Frustum& frustum,
-        glm::mat4& viewMatrix,
+        const glm::mat4& viewMatrix,
         const glm::vec3 cameraPos,
         const float nearClip,
         const float farClip,

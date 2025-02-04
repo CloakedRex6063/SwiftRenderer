@@ -14,7 +14,7 @@ namespace Swift
         BoundingAABB CreateBoundingAABBFromVertices(std::span<glm::vec3> positions);
         void UpdateFrustum(
             Frustum& frustum,
-            glm::mat4& viewMatrix,
+            const glm::mat4& viewMatrix,
             glm::vec3 cameraPos,
             float nearClip,
             float farClip,

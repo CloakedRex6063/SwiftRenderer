@@ -1,5 +1,4 @@
 #include "Parser.hpp"
-
 #include "Structs.hpp"
 #include "SwiftUtil.hpp"
 #include "fastgltf/core.hpp"
