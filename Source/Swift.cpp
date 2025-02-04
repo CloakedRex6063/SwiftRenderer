@@ -342,6 +342,25 @@ void Swift::ShowDebugStats()
 #endif
 }
 
+void Swift::ShowDebugStats(bool& bOpen)
+{
+#ifdef SWIFT_IMGUI
+    VmaBudget budgets[VK_MAX_MEMORY_HEAPS];
+    vmaGetHeapBudgets(gContext.allocator, budgets);
+    ImGui::Begin("Debug Statistics", &bOpen);
+    ImGui::Text(
+        "Memory Usage: %f GB",
+        static_cast<float>(budgets[0].statistics.allocationBytes) / (1024.0f * 1024.0f * 1024.0f));
+    ImGui::Text(
+        "Memory Allocated: %f GB",
+        static_cast<float>(budgets[0].usage) / (1024.0f * 1024.0f * 1024.0f));
+    ImGui::Text(
+        "Available GPU Memory: %f GB",
+        static_cast<float>(budgets[0].budget) / (1024.0f * 1024.0f * 1024.0f));
+    ImGui::End();
+#endif
+}
+
 void Swift::SetCullMode(const CullMode& cullMode)
 {
     const auto& commandBuffer = Render::GetCommandBuffer(gCurrentFrameData);

@@ -19,6 +19,7 @@ namespace Swift
     void RenderImGUI();
 
     void ShowDebugStats();
+    void ShowDebugStats(bool& bOpen);
 
     void SetCullMode(const CullMode& cullMode);
     void SetDepthCompareOp(DepthCompareOp depthCompareOp);
