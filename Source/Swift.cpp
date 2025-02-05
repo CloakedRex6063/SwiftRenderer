@@ -5,10 +5,10 @@
 #include "Vulkan/VulkanUtil.hpp"
 #ifdef SWIFT_IMGUI
 #include "imgui.h"
-#include "imgui_impl_vulkan.h"
+#include "backends/imgui_impl_vulkan.h"
 #endif
 #ifdef SWIFT_IMGUI_GLFW
-#include "imgui_impl_glfw.h"
+#include "backends/imgui_impl_glfw.h"
 #endif
 
 #define VMA_IMPLEMENTATION

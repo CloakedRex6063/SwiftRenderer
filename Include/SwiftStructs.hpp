@@ -1,6 +1,7 @@
 #pragma once
 #include "SwiftEnums.hpp"
 
+
 struct GLFWwindow;
 namespace Swift
 {

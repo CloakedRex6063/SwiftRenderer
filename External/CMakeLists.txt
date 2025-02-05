@@ -1,6 +1,3 @@
-add_subdirectory(GLM)
-target_link_libraries(SwiftRender PUBLIC glm::glm)
-
 add_subdirectory(VMA)
 target_link_libraries(SwiftRender PUBLIC GPUOpen::VulkanMemoryAllocator)
 
@@ -22,15 +19,31 @@ else()
     message(FATAL_ERROR "Vulkan SDK not found!")
 endif()
 
+FetchContent_Declare(
+        glm
+        GIT_REPOSITORY https://github.com/g-truc/glm
+        GIT_TAG 69b130c
+)
+FetchContent_MakeAvailable(glm)
+target_link_libraries(SwiftRender PUBLIC glm::glm)
+
+FetchContent_Declare(
+        imgui
+        GIT_REPOSITORY https://github.com/ocornut/imgui
+        GIT_TAG v1.91.7-docking
+)
+FetchContent_MakeAvailable(imgui)
+
 if (SwiftImGui)
-    FILE(GLOB ImGuiSources ImGUI/*.cpp)
+    FILE(GLOB ImGuiSources ${imgui_SOURCE_DIR}/*.cpp)
     add_library(imgui ${ImGuiSources})
-    target_include_directories(imgui PUBLIC ImGui ImGui/backends)
+    target_include_directories(imgui PUBLIC ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/backends)
     target_link_libraries(imgui PUBLIC Vulkan::Vulkan)
-    target_sources(imgui PUBLIC ImGui/backends/imgui_impl_vulkan.cpp ImGui/backends/imgui_impl_glfw.cpp)
+    target_sources(imgui PUBLIC ${imgui_SOURCE_DIR}/backends/imgui_impl_vulkan.cpp ${imgui_SOURCE_DIR}/backends/imgui_impl_glfw.cpp)
     target_link_libraries(SwiftRender PUBLIC imgui)
 endif ()
 
 if (SwiftImGuiGLFW)
     target_link_libraries(imgui PUBLIC glfw)
 endif ()
+
