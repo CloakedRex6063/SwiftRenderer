@@ -1,4 +1,9 @@
 add_subdirectory(VMA)
+target_compile_options(VulkanMemoryAllocator INTERFACE
+        $<$<CXX_COMPILER_ID:MSVC>:/w>       
+        $<$<CXX_COMPILER_ID:GNU>:-w>        
+        $<$<CXX_COMPILER_ID:Clang>:-w>
+)
 target_link_libraries(SwiftRender PUBLIC GPUOpen::VulkanMemoryAllocator)
 
 add_subdirectory(DDS)

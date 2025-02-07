@@ -16,7 +16,7 @@ layout(location = 2) in vec3 inNormal;
 layout(location = 0) out vec4 outFragColor;
 
 layout(binding = 0) uniform sampler2D samplers[];
-layout(binding = 4) uniform samplerCube cubemaps[];
+layout(binding = 0) uniform samplerCube cubemaps[];
 
 #ifdef INDIRECT
 layout(push_constant) uniform Constant

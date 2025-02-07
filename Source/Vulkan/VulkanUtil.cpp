@@ -171,28 +171,6 @@ namespace Swift::Vulkan
         device.updateDescriptorSets(samplerWriteInfo, {});
     }
 
-    void Util::UpdateDescriptorSamplerCube(
-        const vk::DescriptorSet set,
-        const vk::ImageView imageView,
-        const vk::Sampler sampler,
-        const u32 arrayElement,
-        const vk::Device& device)
-    {
-        const auto imageInfo = vk::DescriptorImageInfo()
-                                   .setImageLayout(vk::ImageLayout::eGeneral)
-                                   .setImageView(imageView)
-                                   .setSampler(sampler);
-        const auto samplerWriteInfo =
-            vk::WriteDescriptorSet()
-                .setDstSet(set)
-                .setDstBinding(Constants::CubeSamplerBinding)
-                .setDstArrayElement(arrayElement)
-                .setDescriptorCount(1)
-                .setDescriptorType(vk::DescriptorType::eCombinedImageSampler)
-                .setImageInfo(imageInfo);
-        device.updateDescriptorSets(samplerWriteInfo, {});
-    }
-
     vk::ImageMemoryBarrier2 Util::ImageBarrier(
         const vk::ImageLayout oldLayout,
         const vk::ImageLayout newLayout,

@@ -164,6 +164,16 @@ namespace Swift::Vulkan::Render
              vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA},
             context.dynamicLoader);
         bool colorBlendEnabled = false;
+
+        constexpr auto colorBlendEquation =
+    vk::ColorBlendEquationEXT()
+        .setAlphaBlendOp(vk::BlendOp::eAdd)
+        .setSrcAlphaBlendFactor(vk::BlendFactor::eOne)
+        .setDstAlphaBlendFactor(vk::BlendFactor::eZero)
+        .setColorBlendOp(vk::BlendOp::eAdd)
+        .setSrcColorBlendFactor(vk::BlendFactor::eSrcAlpha)
+        .setDstColorBlendFactor(vk::BlendFactor::eOneMinusSrcAlpha);
+        commandBuffer.setColorBlendEquationEXT(0, colorBlendEquation, context.dynamicLoader);
         commandBuffer.setColorBlendEnableEXT(0, colorBlendEnabled, context.dynamicLoader);
     }
 
@@ -186,6 +196,15 @@ namespace Swift::Vulkan::Render
         const Context& context,
         const vk::CommandBuffer commandBuffer)
     {
+        constexpr auto colorBlendEquation =
+            vk::ColorBlendEquationEXT()
+                .setAlphaBlendOp(vk::BlendOp::eAdd)
+                .setSrcAlphaBlendFactor(vk::BlendFactor::eOne)
+                .setDstAlphaBlendFactor(vk::BlendFactor::eZero)
+                .setColorBlendOp(vk::BlendOp::eAdd)
+                .setSrcColorBlendFactor(vk::BlendFactor::eSrcAlpha)
+                .setDstColorBlendFactor(vk::BlendFactor::eOneMinusSrcAlpha);
+        commandBuffer.setColorBlendEquationEXT(0, colorBlendEquation, context.dynamicLoader);
         commandBuffer.setColorBlendEnableEXT(0, 0, nullptr, context.dynamicLoader);
     }
 
@@ -214,15 +233,7 @@ namespace Swift::Vulkan::Render
         const Context& context,
         const vk::CommandBuffer commandBuffer)
     {
-        constexpr auto inputBinding = vk::VertexInputBindingDescription2EXT()
-                                          .setBinding(0)
-                                          .setInputRate(vk::VertexInputRate::eVertex)
-                                          .setDivisor(1)
-                                          .setStride(1);
-        constexpr auto inputAttribute =
-            vk::VertexInputAttributeDescription2EXT().setBinding(0).setFormat(
-                vk::Format::eR32G32B32Sfloat);
-        commandBuffer.setVertexInputEXT(inputBinding, inputAttribute, context.dynamicLoader);
+        commandBuffer.setVertexInputEXT({}, {}, context.dynamicLoader);
     }
 
     // --------------------------------------------------------------------------------------------

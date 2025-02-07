@@ -18,6 +18,10 @@ namespace Swift
         HWND hwnd{};
         // Use for wider support of GPUs and possibly better performance. Optional
         bool bUsePipelines{};
+
+        // Use to prefer integrated graphics over dedicated ones (Dedicated graphics are
+        // preferred by default)
+        bool bPreferIntegratedGraphics{};
 #ifdef  SWIFT_IMGUI_GLFW
         // Window used to imgui initialisation
         GLFWwindow* glfwWindow{};
@@ -48,11 +52,18 @@ namespace Swift
             this->bUsePipelines = usePipelines;
             return *this;
         }
+        InitInfo& SetPreferIntegratedGraphics(const bool useIntegratedGraphics)
+        {
+            this->bPreferIntegratedGraphics = useIntegratedGraphics;
+            return *this;
+        }
+#ifdef  SWIFT_IMGUI_GLFW
         InitInfo& SetGlfwWindow(GLFWwindow* window)
         {
             this->glfwWindow = window;
             return *this;
         }
+#endif
     };
 
     struct DynamicInfo

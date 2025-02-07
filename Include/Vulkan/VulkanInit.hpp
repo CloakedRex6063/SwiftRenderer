@@ -101,31 +101,4 @@ namespace Swift::Vulkan::Init
         int maxMipLevel,
         bool loadAllMips,
         std::string_view debugName);
-
-    std::tuple<
-        Image,
-        Buffer>
-    CreateDDSEnvironmentMap(
-        const Context& context,
-        Queue transferQueue,
-        Command transferCommand,
-        const std::filesystem::path& filePath,
-        std::string_view debugName);
-
-    std::tuple<
-        Image,
-        Image,
-        Image,
-        Image>
-    EquiRectangularToCubemap(
-        const Context& context,
-        const BindlessDescriptor& descriptor,
-        std::vector<Image>& samplerCubes,
-        vk::Sampler sampler,
-        vk::CommandBuffer graphicsCommand,
-        vk::Fence graphicsFence,
-        Queue graphicsQueue,
-        bool bUsePipelines,
-        u32 equiIndex,
-        std::string_view debugName);
 } // namespace Swift::Vulkan::Init

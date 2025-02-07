@@ -6,16 +6,22 @@ namespace Swift
     void Init(const InitInfo& initInfo);
     void Shutdown();
 
+    bool SupportsGraphicsMultithreading();
+
     inline bool IsValid(const Swift::BufferHandle handle)
     {
         return handle != InvalidHandle;
     }
-    
+
     void BeginFrame(const DynamicInfo& dynamicInfo);
     void EndFrame(const DynamicInfo& dynamicInfo);
 
     void BeginRendering();
     void EndRendering();
+
+    void BeginRendering(ImageHandle image);
+    void EndRendering(ImageHandle image);
+    
     void RenderImGUI();
 
     void ShowDebugStats();
@@ -75,7 +81,8 @@ namespace Swift
         u32 y,
         u32 z);
 
-    ImageHandle CreateWriteableImage(
+    ImageHandle CreateImage(
+        ImageUsage usage,
         glm::uvec2 size,
         std::string_view debugName);
     void DestroyImage(ImageHandle imageHandle);
@@ -168,6 +175,6 @@ namespace Swift
     void BeginTransfer(ThreadHandle threadHandle = -1);
     void EndTransfer(ThreadHandle threadHandle = -1);
 
-    ThreadHandle CreateThreadContext();
-    void DestroyThreadContext(ThreadHandle threadHandle);
+    ThreadHandle CreateGraphicsThreadContext();
+    void DestroyGraphicsThreadContext(ThreadHandle threadHandle);
 } // namespace Swift

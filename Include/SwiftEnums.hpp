@@ -8,11 +8,20 @@ namespace Swift
         eR32G32B32A32_SRGB,
     };
 
+    enum class ImageUsage : uint8_t
+    {
+        eSampledReadWrite,
+        eReadWrite,
+        eSampled,
+        eTemporary,
+    };
+
     enum class ImageType : uint8_t
     {
-        eReadWrite,
-        eReadOnly,
-        eTemporary,
+        e1D,
+        e2D,
+        e3D,
+        eCube
     };
 
     enum class BufferType : uint8_t

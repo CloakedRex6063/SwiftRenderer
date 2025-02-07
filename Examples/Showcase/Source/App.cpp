@@ -266,7 +266,6 @@ int main()
     std::chrono::high_resolution_clock::time_point lastTime =
         std::chrono::high_resolution_clock::now();
 
-    const auto threadHandle = Swift::CreateThreadContext();
     std::future<std::unordered_map<Swift::ImageHandle, Swift::ImageHandle>> streamFuture;
     // -------------------------------------Game Loop----------------------------------------------
     while (Window::IsRunning())
@@ -400,7 +399,6 @@ int main()
         Swift::EndFrame(dynamicInfo);
     }
 
-    Swift::DestroyThreadContext(threadHandle);
     Swift::Shutdown();
     Window::Shutdown();
 }

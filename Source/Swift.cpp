@@ -4,8 +4,8 @@
 #include "Vulkan/VulkanStructs.hpp"
 #include "Vulkan/VulkanUtil.hpp"
 #ifdef SWIFT_IMGUI
-#include "imgui.h"
 #include "backends/imgui_impl_vulkan.h"
+#include "imgui.h"
 #endif
 #ifdef SWIFT_IMGUI_GLFW
 #include "backends/imgui_impl_glfw.h"
@@ -51,14 +51,14 @@ namespace
 
     u32 PackImageType(
         u32 value,
-        const ImageType type)
+        const ImageUsage type)
     {
         return (value << 8) | (static_cast<u32>(type) & 0xFF);
     }
 
-    ImageType GetImageType(const u32 value)
+    ImageUsage GetImageType(const u32 value)
     {
-        return static_cast<ImageType>(value & 0xFF);
+        return static_cast<ImageUsage>(value & 0xFF);
     }
 
     u32 GetImageIndex(const u32 value)
@@ -71,11 +71,12 @@ namespace
         const auto index = GetImageIndex(imageHandle);
         switch (GetImageType(imageHandle))
         {
-        case ImageType::eReadWrite:
+        case ImageUsage::eSampledReadWrite:
+        case ImageUsage::eReadWrite:
             return gWriteableImages[index];
-        case ImageType::eReadOnly:
+        case ImageUsage::eSampled:
             return gSamplerImages[index];
-        case ImageType::eTemporary:
+        case ImageUsage::eTemporary:
             return gTemporaryImages[index];
         }
         return gSamplerImages[index];
@@ -241,6 +242,12 @@ void Swift::Shutdown()
     gContext.Destroy();
 }
 
+bool Swift::SupportsGraphicsMultithreading()
+{
+    const auto queueFamilyProps = gContext.gpu.getQueueFamilyProperties();
+    return queueFamilyProps.at(gGraphicsQueue.index).queueCount > 1;
+}
+
 void Swift::BeginFrame(const DynamicInfo& dynamicInfo)
 {
     gCurrentFrameData = gFrameData[gCurrentFrame];
@@ -306,7 +313,6 @@ void Swift::BeginRendering()
     const auto& commandBuffer = Render::GetCommandBuffer(gCurrentFrameData);
     Render::BeginRendering(commandBuffer, gSwapchain, true);
     Render::SetPipelineDefault(gContext, commandBuffer, gSwapchain.extent, gInitInfo.bUsePipelines);
-    Render::EnableTransparencyBlending(gContext, commandBuffer);
 }
 
 void Swift::EndRendering()
@@ -314,6 +320,7 @@ void Swift::EndRendering()
     const auto& commandBuffer = Render::GetCommandBuffer(gCurrentFrameData);
     commandBuffer.endRendering();
 }
+
 void Swift::RenderImGUI()
 {
     const auto& commandBuffer = Render::GetCommandBuffer(gCurrentFrameData);
@@ -474,7 +481,8 @@ void Swift::DrawIndexedIndirectCount(
         stride);
 }
 
-ImageHandle Swift::CreateWriteableImage(
+ImageHandle Swift::CreateImage(
+    ImageUsage usage,
     const glm::uvec2 size,
     const std::string_view debugName)
 {
@@ -493,17 +501,57 @@ ImageHandle Swift::CreateWriteableImage(
         1,
         {},
         debugName);
-    gWriteableImages.emplace_back(image);
 
-    const auto arrayElement = static_cast<u32>(gWriteableImages.size() - 1);
-    Util::UpdateDescriptorImage(
-        gDescriptor.set,
-        image.imageView,
-        gLinearSampler,
-        arrayElement,
-        gContext);
+    u32 arrayElement = 0;
+    switch (usage)
+    {
+    case ImageUsage::eSampledReadWrite:
+        gWriteableImages.emplace_back(image);
+        arrayElement = static_cast<u32>(gWriteableImages.size() - 1);
+        Util::UpdateDescriptorImage(
+            gDescriptor.set,
+            image.imageView,
+            gLinearSampler,
+            arrayElement,
+            gContext);
 
-    return PackImageType(arrayElement, ImageType::eReadWrite);
+        gSamplerImages.emplace_back(image);
+        arrayElement = static_cast<u32>(gSamplerImages.size() - 1);
+        Util::UpdateDescriptorSampler(
+            gDescriptor.set,
+            image.imageView,
+            gLinearSampler,
+            arrayElement,
+            gContext);
+        return PackImageType(arrayElement, ImageUsage::eSampledReadWrite);
+        
+    case ImageUsage::eReadWrite:
+        arrayElement = static_cast<u32>(gWriteableImages.size() - 1);
+        Util::UpdateDescriptorImage(
+            gDescriptor.set,
+            image.imageView,
+            gLinearSampler,
+            arrayElement,
+            gContext);
+        gWriteableImages.emplace_back(image);
+        return PackImageType(arrayElement, ImageUsage::eReadWrite);
+    case ImageUsage::eSampled:
+        gSamplerImages.emplace_back(image);
+        arrayElement = static_cast<u32>(gSamplerImages.size() - 1);
+        Util::UpdateDescriptorSampler(
+            gDescriptor.set,
+            image.imageView,
+            gLinearSampler,
+            arrayElement,
+            gContext);
+        return PackImageType(arrayElement, ImageUsage::eSampled);
+    case ImageUsage::eTemporary:
+        gTemporaryImages.emplace_back(image);
+        arrayElement = static_cast<u32>(gTemporaryImages.size() - 1);
+        return PackImageType(arrayElement, ImageUsage::eTemporary);
+    }
+    assert(false);
+    return {};
 }
 
 ImageHandle Swift::LoadImageFromFile(
@@ -564,7 +612,7 @@ ImageHandle Swift::LoadImageFromFileQueued(
     {
         gTemporaryImages.emplace_back(image);
         arrayElement = static_cast<u32>(gTemporaryImages.size() - 1);
-        return PackImageType(arrayElement, ImageType::eTemporary);
+        return PackImageType(arrayElement, ImageUsage::eTemporary);
     }
 
     gSamplerImages.emplace_back(image);
@@ -575,7 +623,7 @@ ImageHandle Swift::LoadImageFromFileQueued(
         gLinearSampler,
         arrayElement,
         gContext);
-    return PackImageType(arrayElement, ImageType::eReadOnly);
+    return PackImageType(arrayElement, ImageUsage::eSampled);
 }
 
 ImageHandle Swift::LoadCubemapFromFile(
@@ -602,14 +650,14 @@ ImageHandle Swift::LoadCubemapFromFile(
 
     gSamplerImages.emplace_back(image);
     const auto arrayElement = static_cast<u32>(gSamplerImages.size() - 1);
-    Util::UpdateDescriptorSamplerCube(
+    Util::UpdateDescriptorSampler(
         gDescriptor.set,
         gSamplerImages.back().imageView,
         gLinearSampler,
         arrayElement,
         gContext);
 
-    return PackImageType(arrayElement, ImageType::eReadOnly);
+    return PackImageType(arrayElement, ImageUsage::eSampled);
 }
 
 int Swift::GetMinLod(const ImageHandle image)
@@ -634,7 +682,7 @@ std::string_view Swift::GetURI(const ImageHandle imageHandle)
 
 ImageHandle Swift::ReadOnlyImageFromIndex(const int imageIndex)
 {
-    return PackImageType(imageIndex, ImageType::eReadOnly);
+    return PackImageType(imageIndex, ImageUsage::eSampled);
 }
 
 void Swift::UpdateImage(
@@ -1021,8 +1069,9 @@ void Swift::EndTransfer(const ThreadHandle threadHandle)
     gTransferStagingBuffers.clear();
 }
 
-ThreadHandle Swift::CreateThreadContext()
+ThreadHandle Swift::CreateGraphicsThreadContext()
 {
+    if (!SupportsGraphicsMultithreading()) assert(false);
     const u32 size = static_cast<u32>(gThreadDatas.size());
     const auto queue = Init::GetQueue(gContext, gGraphicsQueue.index, 1, "Thread Queue");
     const auto threadQueue = Queue().SetQueue(queue).SetIndex(gGraphicsQueue.index);
@@ -1040,8 +1089,9 @@ ThreadHandle Swift::CreateThreadContext()
     return size;
 }
 
-void Swift::DestroyThreadContext(const ThreadHandle threadHandle)
+void Swift::DestroyGraphicsThreadContext(const ThreadHandle threadHandle)
 {
+    if (!SupportsGraphicsMultithreading()) assert(false);
     gThreadDatas[threadHandle].Destroy(gContext);
     gThreadDatas.erase(gThreadDatas.begin() + threadHandle);
 }

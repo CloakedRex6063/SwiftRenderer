@@ -17,6 +17,7 @@
 #include "glm/glm.hpp"
 #include "glm/ext/matrix_clip_space.hpp"
 #include "glm/ext/matrix_transform.hpp"
+#define VULKAN_HPP_ASSERT(x)
 #include "vulkan/vulkan.hpp"
 #include "vk_mem_alloc.h"
 

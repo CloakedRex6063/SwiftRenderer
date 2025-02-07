@@ -160,13 +160,6 @@ namespace Swift::Vulkan::Util
         u32 arrayElement,
         const vk::Device& device);
 
-    void UpdateDescriptorSamplerCube(
-        vk::DescriptorSet set,
-        vk::ImageView imageView,
-        vk::Sampler sampler,
-        u32 arrayElement,
-        const vk::Device& device);
-
     template <typename T>
     static void NameObject(
         T object,

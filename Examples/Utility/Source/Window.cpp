@@ -24,7 +24,7 @@ namespace
 
 namespace Window
 {
-    void Window::Init()
+    void Init()
     {
         glfwInit();
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
@@ -39,25 +39,25 @@ namespace Window
                                   });
     }
 
-    void Window::Shutdown()
+    void Shutdown()
     {
         glfwDestroyWindow(gWindow);
         glfwTerminate();
     }
     
-    void Window::PollEvents()
+    void PollEvents()
     {
         glfwPollEvents();
     }
 
-    glm::uvec2 Window::GetSize() { return gWindow.size; }
+    glm::uvec2 GetSize() { return gWindow.size; }
     
-    GLFWwindow* Window::GetWindow()
+    GLFWwindow* GetWindow()
     {
         return gWindow.window;
     }
 
-    HWND Window::GetHandle() { return glfwGetWin32Window(gWindow); }
+    HWND GetHandle() { return glfwGetWin32Window(gWindow); }
 
-    bool Window::IsRunning() { return !glfwWindowShouldClose(gWindow); }
+    bool IsRunning() { return !glfwWindowShouldClose(gWindow); }
 } // namespace Utility

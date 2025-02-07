@@ -7,6 +7,10 @@ set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 
 FILE(GLOB_RECURSE Sources Source/*.cpp)
 
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    add_compile_options(-fexperimental-library)
+endif()
+
 add_library(SwiftRender STATIC)
 target_include_directories(SwiftRender PUBLIC Include PRIVATE Source)
 target_sources(SwiftRender PUBLIC ${Sources})

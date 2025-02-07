@@ -5,7 +5,7 @@
 layout(location = 0) in vec3 TexCoords;
 layout(location = 0) out vec4 FragColor;
 
-layout(binding = 4) uniform samplerCube cubemaps[];
+layout(binding = 0) uniform samplerCube cubemaps[];
 
 layout(push_constant) uniform SkyboxConstant
 {
