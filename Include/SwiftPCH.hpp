@@ -25,6 +25,7 @@
 #include "Windows.h"
 #undef max
 #undef min
+#undef Polygon
 #undef CreateSemaphore
 
 using u8 = uint8_t;
