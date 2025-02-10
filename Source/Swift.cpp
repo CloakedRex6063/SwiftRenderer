@@ -5,8 +5,8 @@
 #include "Vulkan/VulkanUtil.hpp"
 
 #include "imgui.h"
-#include "backends/imgui_impl_vulkan.h"
-#include "backends/imgui_impl_glfw.h"
+#include "imgui_impl_vulkan.h"
+#include "imgui_impl_glfw.h"
 
 #define VMA_IMPLEMENTATION
 #include "vk_mem_alloc.h"
