@@ -19,8 +19,7 @@ int main()
                                    .SetAppName("Regular")
                                    .SetEngineName("Swift")
                                    .SetExtent(Window::GetSize())
-                                   .SetHwnd(Window::GetHandle())
-                                   .SetGlfwWindow(Window::GetWindow());
+                                   .SetWindowHandle(Window::GetWindow());
     Swift::Init(swiftInitInfo);
     Parser::Init();
 

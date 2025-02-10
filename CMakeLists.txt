@@ -23,20 +23,9 @@ elseif (UNIX AND NOT APPLE)
 endif ()
 
 option(SwiftWithExample "Build the example project" ON)
-option(SwiftImGui "Support Imgui with swift" ON)
-option(SwiftImGuiGLFW "Support GLFW backend for imgui" ON)
 
 if (SwiftWithExample)
     add_subdirectory(Examples)
 endif ()
-
-if (SwiftImGui)
-    target_compile_definitions(SwiftRender PUBLIC SWIFT_IMGUI)
-endif ()
-
-if (SwiftImGuiGLFW)
-    target_compile_definitions(SwiftRender PUBLIC SWIFT_IMGUI_GLFW)
-endif ()
-
 add_subdirectory(External)
 

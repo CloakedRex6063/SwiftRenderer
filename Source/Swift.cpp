@@ -3,13 +3,10 @@
 #include "Vulkan/VulkanRender.hpp"
 #include "Vulkan/VulkanStructs.hpp"
 #include "Vulkan/VulkanUtil.hpp"
-#ifdef SWIFT_IMGUI
-#include "backends/imgui_impl_vulkan.h"
+
 #include "imgui.h"
-#endif
-#ifdef SWIFT_IMGUI_GLFW
+#include "backends/imgui_impl_vulkan.h"
 #include "backends/imgui_impl_glfw.h"
-#endif
 
 #define VMA_IMPLEMENTATION
 #include "vk_mem_alloc.h"
@@ -153,7 +150,7 @@ void Swift::Init(const InitInfo& initInfo)
         "Graphics Command Buffer");
     gGraphicsFence = Init::CreateFence(gContext, {}, "Graphics Fence");
 
-#ifdef SWIFT_IMGUI
+
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
@@ -180,11 +177,11 @@ void Swift::Init(const InitInfo& initInfo)
         }};
     ImGui_ImplVulkan_Init(&vulkanInitInfo);
     ImGui_ImplVulkan_CreateFontsTexture();
-#endif
 
-#ifdef SWIFT_IMGUI_GLFW
-    ImGui_ImplGlfw_InitForVulkan(initInfo.glfwWindow, true);
-#endif
+    if (std::holds_alternative<GLFWwindow*>(initInfo.windowHandle))
+    {
+        ImGui_ImplGlfw_InitForVulkan(std::get<GLFWwindow*>(initInfo.windowHandle), true);
+    }
 }
 
 void Swift::Shutdown()
@@ -192,14 +189,10 @@ void Swift::Shutdown()
     [[maybe_unused]]
     const auto result = gContext.device.waitIdle();
     VK_ASSERT(result, "Failed to wait for device while cleaning up");
-
-#ifdef SWIFT_IMGUI
+    
     ImGui_ImplVulkan_Shutdown();
-#ifdef SWIFT_IMGUI_GLFW
     ImGui_ImplGlfw_Shutdown();
-#endif
     ImGui::DestroyContext();
-#endif
 
     for (auto& frameData : gFrameData)
     {
@@ -254,11 +247,10 @@ void Swift::BeginFrame(const DynamicInfo& dynamicInfo)
     const auto& commandBuffer = Render::GetCommandBuffer(gCurrentFrameData);
     const auto& renderFence = Render::GetRenderFence(gCurrentFrameData);
 
-#ifdef SWIFT_IMGUI
+
     ImGui_ImplVulkan_NewFrame();
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
-#endif
 
     Util::WaitFence(gContext, renderFence, 1000000000);
     gSwapchain.imageIndex = Render::AcquireNextImage(
@@ -303,9 +295,8 @@ void Swift::EndFrame(const DynamicInfo& dynamicInfo)
         Util::To2D(dynamicInfo.extent));
 
     gCurrentFrame = (gCurrentFrame + 1) % gSwapchain.images.size();
-#ifdef SWIFT_IMGUI
+
     ImGui::EndFrame();
-#endif
 }
 
 void Swift::BeginRendering()
@@ -332,7 +323,7 @@ void Swift::RenderImGUI()
 
 void Swift::ShowDebugStats()
 {
-#ifdef SWIFT_IMGUI
+
     VmaBudget budgets[VK_MAX_MEMORY_HEAPS];
     vmaGetHeapBudgets(gContext.allocator, budgets);
     ImGui::Begin("Debug Statistics");
@@ -346,12 +337,10 @@ void Swift::ShowDebugStats()
         "Available GPU Memory: %f GB",
         static_cast<float>(budgets[0].budget) / (1024.0f * 1024.0f * 1024.0f));
     ImGui::End();
-#endif
 }
 
 void Swift::ShowDebugStats(bool& bOpen)
 {
-#ifdef SWIFT_IMGUI
     VmaBudget budgets[VK_MAX_MEMORY_HEAPS];
     vmaGetHeapBudgets(gContext.allocator, budgets);
     ImGui::Begin("Debug Statistics", &bOpen);
@@ -365,7 +354,6 @@ void Swift::ShowDebugStats(bool& bOpen)
         "Available GPU Memory: %f GB",
         static_cast<float>(budgets[0].budget) / (1024.0f * 1024.0f * 1024.0f));
     ImGui::End();
-#endif
 }
 
 void Swift::SetCullMode(const CullMode& cullMode)

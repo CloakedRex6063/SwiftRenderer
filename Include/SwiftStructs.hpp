@@ -1,6 +1,5 @@
 #pragma once
 
-
 struct GLFWwindow;
 namespace Swift
 {
@@ -13,18 +12,15 @@ namespace Swift
         // Extent of the swapchain to be created. Mandatory
         glm::uvec2 extent{};
         // Native window handle. Mandatory
-        // TODO: use std::variant to allow for linux support
-        HWND hwnd{};
+        // TODO: add sdl support
+        std::variant<GLFWwindow*> windowHandle{};
+
         // Use for wider support of GPUs and possibly better performance. Optional
         bool bUsePipelines{};
 
         // Use to prefer integrated graphics over dedicated ones (Dedicated graphics are
         // preferred by default)
         bool bPreferIntegratedGraphics{};
-#ifdef  SWIFT_IMGUI_GLFW
-        // Window used to imgui initialisation
-        GLFWwindow* glfwWindow{};
-#endif
 
         InitInfo& SetAppName(const std::string_view appName)
         {
@@ -41,9 +37,9 @@ namespace Swift
             this->extent = extent;
             return *this;
         }
-        InitInfo& SetHwnd(const HWND hwnd)
+        InitInfo& SetWindowHandle(GLFWwindow* window)
         {
-            this->hwnd = hwnd;
+            this->windowHandle = window;
             return *this;
         }
         InitInfo& SetUsePipelines(const bool usePipelines)
@@ -56,13 +52,6 @@ namespace Swift
             this->bPreferIntegratedGraphics = useIntegratedGraphics;
             return *this;
         }
-#ifdef  SWIFT_IMGUI_GLFW
-        InitInfo& SetGlfwWindow(GLFWwindow* window)
-        {
-            this->glfwWindow = window;
-            return *this;
-        }
-#endif
     };
 
     struct DynamicInfo

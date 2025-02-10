@@ -1,10 +1,10 @@
 #include "Vulkan/VulkanInit.hpp"
+#include "GLFW/glfw3.h"
 #include "Utils/FileIO.hpp"
 #include "Vulkan/VulkanConstants.hpp"
 #include "Vulkan/VulkanStructs.hpp"
 #include "Vulkan/VulkanUtil.hpp"
 #include "dds.hpp"
-#include "vulkan/vulkan_win32.h"
 
 namespace
 {
@@ -130,16 +130,14 @@ namespace
         const Swift::Vulkan::Context& context,
         const Swift::InitInfo& initInfo)
     {
-#ifdef SWIFT_WINDOWS
-        const VkWin32SurfaceCreateInfoKHR surfaceCreateInfo{
-            .sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR,
-            .hinstance = GetModuleHandle(nullptr),
-            .hwnd = initInfo.hwnd,
-        };
-        VkSurfaceKHR surface;
-        vkCreateWin32SurfaceKHR(context.instance, &surfaceCreateInfo, nullptr, &surface);
-#endif
-        return surface;
+        if (std::holds_alternative<GLFWwindow*>(initInfo.windowHandle))
+        {
+            VkSurfaceKHR surface;
+            glfwCreateWindowSurface(context.instance, std::get<GLFWwindow*>(initInfo.windowHandle), nullptr, &surface);
+            return surface;
+        }
+        assert(false);
+        return {};
     }
 
     // From

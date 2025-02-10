@@ -21,13 +21,6 @@
 #include "vulkan/vulkan.hpp"
 #include "vk_mem_alloc.h"
 
-#define WIN32_LEAN_AND_MEAN
-#include "Windows.h"
-#undef max
-#undef min
-#undef Polygon
-#undef CreateSemaphore
-
 using u8 = uint8_t;
 using u16 = uint16_t;
 using u32 = uint32_t;
