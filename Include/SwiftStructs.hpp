@@ -1,5 +1,4 @@
 #pragma once
-#include "SwiftEnums.hpp"
 
 
 struct GLFWwindow;

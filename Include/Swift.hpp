@@ -1,5 +1,6 @@
 #pragma once
 #include "SwiftStructs.hpp"
+#include "SwiftEnums.hpp"
 
 namespace Swift
 {
