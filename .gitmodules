@@ -1,8 +1,0 @@
-[submodule "External/VMA"]
-	path = External/VMA
-	url = https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator
-	branch = master
-[submodule "External/DDS"]
-	path = External/DDS
-	url = https://github.com/CloakedRex6063/DDS-Utility
-	branch = master

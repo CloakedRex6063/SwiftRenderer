@@ -863,7 +863,7 @@ namespace Swift::Vulkan
         const bool loadAllMips,
         const std::string_view debugName)
     {
-        dds::Header header = dds::ReadHeader(filePath);
+        dds::Header header = dds::ReadHeader(filePath.string());
 
         auto imageCreateInfo = header.GetVulkanImageCreateInfo(
             vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst);
