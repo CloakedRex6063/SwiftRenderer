@@ -1,7 +1,7 @@
 FetchContent_Declare(
         DDS
         GIT_REPOSITORY https://github.com/CloakedRex6063/DDS-Utility
-        GIT_TAG 258a95c1
+        GIT_TAG ade8320
 )
 target_compile_definitions(SwiftRender PUBLIC DDS_USE_STD_FILESYSTEM DDS_CPP_17)
 FetchContent_MakeAvailable(DDS)
