@@ -4,10 +4,6 @@
 #include "Vulkan/VulkanStructs.hpp"
 #include "Vulkan/VulkanUtil.hpp"
 
-#include "imgui.h"
-#include "imgui_impl_vulkan.h"
-#include "imgui_impl_glfw.h"
-
 #define VMA_IMPLEMENTATION
 #include "vk_mem_alloc.h"
 
@@ -47,7 +43,7 @@ namespace
     InitInfo gInitInfo;
 
     u32 PackImageType(
-        u32 value,
+        const u32 value,
         const ImageUsage type)
     {
         return (value << 8) | (static_cast<u32>(type) & 0xFF);
@@ -149,39 +145,6 @@ void Swift::Init(const InitInfo& initInfo)
         gGraphicsCommand.commandPool,
         "Graphics Command Buffer");
     gGraphicsFence = Init::CreateFence(gContext, {}, "Graphics Fence");
-
-
-    IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
-    ImGuiIO& io = ImGui::GetIO();
-    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-    io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
-    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
-    auto format = VK_FORMAT_B8G8R8A8_UNORM;
-    ImGui_ImplVulkan_InitInfo vulkanInitInfo{
-        .Instance = gContext.instance,
-        .PhysicalDevice = gContext.gpu,
-        .Device = gContext.device,
-        .QueueFamily = gGraphicsQueue.index,
-        .Queue = gGraphicsQueue.queue,
-        .MinImageCount = Util::GetSwapchainImageCount(gContext.gpu, gContext.surface),
-        .ImageCount = Util::GetSwapchainImageCount(gContext.gpu, gContext.surface),
-        .MSAASamples = VK_SAMPLE_COUNT_1_BIT,
-        .DescriptorPoolSize = 1000,
-        .UseDynamicRendering = true,
-        .PipelineRenderingCreateInfo{
-            .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
-            .colorAttachmentCount = 1,
-            .pColorAttachmentFormats = &format,
-            .depthAttachmentFormat = VK_FORMAT_D32_SFLOAT,
-        }};
-    ImGui_ImplVulkan_Init(&vulkanInitInfo);
-    ImGui_ImplVulkan_CreateFontsTexture();
-
-    if (std::holds_alternative<GLFWwindow*>(initInfo.windowHandle))
-    {
-        ImGui_ImplGlfw_InitForVulkan(std::get<GLFWwindow*>(initInfo.windowHandle), true);
-    }
 }
 
 void Swift::Shutdown()
@@ -189,10 +152,6 @@ void Swift::Shutdown()
     [[maybe_unused]]
     const auto result = gContext.device.waitIdle();
     VK_ASSERT(result, "Failed to wait for device while cleaning up");
-    
-    ImGui_ImplVulkan_Shutdown();
-    ImGui_ImplGlfw_Shutdown();
-    ImGui::DestroyContext();
 
     for (auto& frameData : gFrameData)
     {
@@ -235,6 +194,42 @@ void Swift::Shutdown()
     gContext.Destroy();
 }
 
+Swift::InitInfo Swift::GetInitInfo()
+{
+    return gInitInfo;
+}
+
+Swift::Vulkan::Context Swift::GetContext()
+{
+    return gContext;
+}
+
+Vulkan::Queue Swift::GetGraphicsQueue()
+{
+    return gGraphicsQueue;
+}
+
+Vulkan::Queue Swift::GetTransferQueue()
+{
+    return gTransferQueue;
+}
+
+Vulkan::Queue Swift::GetComputeQueue()
+{
+    return gComputeQueue;
+}
+Vulkan::Command Swift::GetGraphicsCommand()
+{
+    return gCurrentFrameData.renderCommand;
+}
+
+void Swift::WaitIdle()
+{
+    [[maybe_unused]]
+    const auto result = gContext.device.waitIdle();
+    VK_ASSERT(result, "Failed to wait for device while cleaning up");
+}
+
 bool Swift::SupportsGraphicsMultithreading()
 {
     const auto queueFamilyProps = gContext.gpu.getQueueFamilyProperties();
@@ -246,11 +241,6 @@ void Swift::BeginFrame(const DynamicInfo& dynamicInfo)
     gCurrentFrameData = gFrameData[gCurrentFrame];
     const auto& commandBuffer = Render::GetCommandBuffer(gCurrentFrameData);
     const auto& renderFence = Render::GetRenderFence(gCurrentFrameData);
-
-
-    ImGui_ImplVulkan_NewFrame();
-    ImGui_ImplGlfw_NewFrame();
-    ImGui::NewFrame();
 
     Util::WaitFence(gContext, renderFence, 1000000000);
     gSwapchain.imageIndex = Render::AcquireNextImage(
@@ -295,8 +285,6 @@ void Swift::EndFrame(const DynamicInfo& dynamicInfo)
         Util::To2D(dynamicInfo.extent));
 
     gCurrentFrame = (gCurrentFrame + 1) % gSwapchain.images.size();
-
-    ImGui::EndFrame();
 }
 
 void Swift::BeginRendering()
@@ -310,50 +298,6 @@ void Swift::EndRendering()
 {
     const auto& commandBuffer = Render::GetCommandBuffer(gCurrentFrameData);
     commandBuffer.endRendering();
-}
-
-void Swift::RenderImGUI()
-{
-    const auto& commandBuffer = Render::GetCommandBuffer(gCurrentFrameData);
-    Render::BeginRendering(commandBuffer, gSwapchain, false);
-    ImGui::Render();
-    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), commandBuffer);
-    commandBuffer.endRendering();
-}
-
-void Swift::ShowDebugStats()
-{
-
-    VmaBudget budgets[VK_MAX_MEMORY_HEAPS];
-    vmaGetHeapBudgets(gContext.allocator, budgets);
-    ImGui::Begin("Debug Statistics");
-    ImGui::Text(
-        "Memory Usage: %f GB",
-        static_cast<float>(budgets[0].statistics.allocationBytes) / (1024.0f * 1024.0f * 1024.0f));
-    ImGui::Text(
-        "Memory Allocated: %f GB",
-        static_cast<float>(budgets[0].usage) / (1024.0f * 1024.0f * 1024.0f));
-    ImGui::Text(
-        "Available GPU Memory: %f GB",
-        static_cast<float>(budgets[0].budget) / (1024.0f * 1024.0f * 1024.0f));
-    ImGui::End();
-}
-
-void Swift::ShowDebugStats(bool& bOpen)
-{
-    VmaBudget budgets[VK_MAX_MEMORY_HEAPS];
-    vmaGetHeapBudgets(gContext.allocator, budgets);
-    ImGui::Begin("Debug Statistics", &bOpen);
-    ImGui::Text(
-        "Memory Usage: %f GB",
-        static_cast<float>(budgets[0].statistics.allocationBytes) / (1024.0f * 1024.0f * 1024.0f));
-    ImGui::Text(
-        "Memory Allocated: %f GB",
-        static_cast<float>(budgets[0].usage) / (1024.0f * 1024.0f * 1024.0f));
-    ImGui::Text(
-        "Available GPU Memory: %f GB",
-        static_cast<float>(budgets[0].budget) / (1024.0f * 1024.0f * 1024.0f));
-    ImGui::End();
 }
 
 void Swift::SetCullMode(const CullMode& cullMode)
@@ -470,7 +414,7 @@ void Swift::DrawIndexedIndirectCount(
 }
 
 ImageHandle Swift::CreateImage(
-    ImageUsage usage,
+    const ImageUsage usage,
     const glm::uvec2 size,
     const std::string_view debugName)
 {

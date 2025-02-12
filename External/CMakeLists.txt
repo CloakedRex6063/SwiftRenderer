@@ -40,22 +40,5 @@ target_compile_options(VulkanMemoryAllocator INTERFACE
         $<$<CXX_COMPILER_ID:Clang>:-w>
 )
 target_link_libraries(SwiftRender PUBLIC GPUOpen::VulkanMemoryAllocator)
-
-FetchContent_Declare(
-        imgui
-        GIT_REPOSITORY https://github.com/ocornut/imgui
-        GIT_TAG v1.91.7-docking
-)
-FetchContent_MakeAvailable(imgui)
-
-FILE(GLOB ImGuiSources ${imgui_SOURCE_DIR}/*.cpp)
-add_library(imgui ${ImGuiSources})
-target_include_directories(imgui PRIVATE ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/backends)
-target_link_libraries(imgui PRIVATE Vulkan::Vulkan)
-target_sources(imgui PRIVATE ${imgui_SOURCE_DIR}/backends/imgui_impl_vulkan.cpp ${imgui_SOURCE_DIR}/backends/imgui_impl_glfw.cpp)
-target_link_libraries(imgui PRIVATE glfw)
-
-target_include_directories(SwiftRender PUBLIC ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/backends)
-target_link_libraries(SwiftRender PRIVATE imgui)
 target_link_libraries(SwiftRender PRIVATE glfw)
 

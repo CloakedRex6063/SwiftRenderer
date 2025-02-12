@@ -6,6 +6,7 @@
 #include "SwiftUtil.hpp"
 #include "Window.hpp"
 #include "future"
+#include "SwiftImgui.hpp"
 #include "imgui.h"
 
 int main()
@@ -21,6 +22,7 @@ int main()
                                    .SetExtent(Window::GetSize())
                                    .SetWindowHandle(Window::GetWindow());
     Swift::Init(swiftInitInfo);
+    Swift::ImGUI::Init();
     Parser::Init();
 
     // --------------------------Initialising scene data and uploading to GPU-----------------------
@@ -283,6 +285,7 @@ int main()
         Camera::HandleMouse(cameraData, deltaTime, lookSensitivity);
         Camera::Update(cameraData, fov, currentWindowSize, nearClip, farClip);
 
+        Swift::ImGUI::BeginFrame();
         Swift::BeginFrame(dynamicInfo);
 
         Swift::UpdateSmallBuffer(cameraBuffer, 0, sizeof(CameraData), &cameraData);
@@ -367,7 +370,7 @@ int main()
 
         Swift::EndRendering();
 
-        Swift::ShowDebugStats();
+        Swift::ImGUI::ShowDebugStats();
 
         ImGui::Begin("App Settings");
         ImGui::Spacing();
@@ -394,10 +397,12 @@ int main()
         ImGui::Text("FPS: %f", 1.f / deltaTime);
 
         ImGui::End();
-        Swift::RenderImGUI();
+        Swift::ImGUI::RenderImGUI();
         Swift::EndFrame(dynamicInfo);
+        Swift::ImGUI::EndFrame();
     }
 
+    Swift::ImGUI::Shutdown();
     Swift::Shutdown();
     Window::Shutdown();
 }

@@ -1,4 +1,3 @@
-include(FetchContent)
 FetchContent_Declare (
         glfw
         GIT_REPOSITORY https://github.com/glfw/glfw.git
@@ -27,6 +26,14 @@ FetchContent_Declare(
         GIT_TAG v1.91.7-docking
 )
 FetchContent_MakeAvailable(imgui)
+
+find_package(Vulkan REQUIRED)
+FILE(GLOB ImGuiSources ${imgui_SOURCE_DIR}/*.cpp)
+add_library(imgui ${ImGuiSources})
+target_include_directories(imgui PUBLIC ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/backends)
+target_link_libraries(imgui PRIVATE Vulkan::Vulkan)
+target_sources(imgui PRIVATE ${imgui_SOURCE_DIR}/backends/imgui_impl_vulkan.cpp ${imgui_SOURCE_DIR}/backends/imgui_impl_glfw.cpp)
+target_link_libraries(imgui PRIVATE glfw)
 
 set(SOURCE_FOLDER "${CMAKE_CURRENT_SOURCE_DIR}/Resources")
 set(DESTINATION_FOLDER "${CMAKE_CURRENT_BINARY_DIR}/Resources")

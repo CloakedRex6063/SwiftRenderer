@@ -5,6 +5,8 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 
+include(FetchContent)
+
 FILE(GLOB_RECURSE Sources Source/*.cpp)
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
@@ -24,8 +26,8 @@ endif ()
 
 option(SwiftWithExample "Build the example project" ON)
 
+add_subdirectory(External)
 if (SwiftWithExample)
     add_subdirectory(Examples)
 endif ()
-add_subdirectory(External)
 

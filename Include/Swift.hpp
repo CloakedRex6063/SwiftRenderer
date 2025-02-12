@@ -1,11 +1,21 @@
 #pragma once
 #include "SwiftStructs.hpp"
+#include "Vulkan/VulkanStructs.hpp"
 #include "SwiftEnums.hpp"
 
 namespace Swift
 {
     void Init(const InitInfo& initInfo);
     void Shutdown();
+
+    Swift::InitInfo GetInitInfo();
+    Vulkan::Context GetContext();
+    Vulkan::Queue GetGraphicsQueue();
+    Vulkan::Queue GetTransferQueue();
+    Vulkan::Queue GetComputeQueue();
+    Vulkan::Command GetGraphicsCommand();
+
+    void WaitIdle();
 
     bool SupportsGraphicsMultithreading();
 
@@ -22,11 +32,6 @@ namespace Swift
 
     void BeginRendering(ImageHandle image);
     void EndRendering(ImageHandle image);
-    
-    void RenderImGUI();
-
-    void ShowDebugStats();
-    void ShowDebugStats(bool& bOpen);
 
     void SetCullMode(const CullMode& cullMode);
     void SetDepthCompareOp(DepthCompareOp depthCompareOp);
@@ -65,7 +70,7 @@ namespace Swift
         const std::string& computePath,
         std::string_view debugName);
 
-    void BindShader(const ShaderHandle& shaderObject);
+    void BindShader(const ShaderHandle& shaderHandle);
 
     void PushConstant(
         const void* value,
